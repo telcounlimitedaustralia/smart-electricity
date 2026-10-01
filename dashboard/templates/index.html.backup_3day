@@ -1,0 +1,3620 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Electricity</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+:root {
+  --bg:#f7f6f9;
+  --card:#ffffff;
+  --card2:#f3eff8;
+
+  --purple:#3f176d;
+  --purple2:#5b2788;
+  --purple-soft:#eee7f5;
+
+  --yellow:#fdbd28;
+  --yellow-soft:#fff5d6;
+
+  --green:#5b2788;
+  --red:#d85c5c;
+  --blue:#356fcb;
+
+  --text:#251c2e;
+  --muted:#746b7c;
+  --border:#ddd5e5;
+
+  --shadow:0 5px 18px rgba(63,23,109,.07);
+}
+
+* { box-sizing:border-box; }
+
+body {
+  margin:0;
+  font-family:Arial,Helvetica,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+}
+
+.container {
+  max-width:1400px;
+  margin:auto;
+  padding:24px;
+}
+
+header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:22px;
+}
+
+h1 { margin:0; font-size:28px; }
+
+.subtitle {
+  color:var(--muted);
+  margin-top:5px;
+}
+
+.online {
+  color:var(--green);
+  font-weight:bold;
+}
+
+.grid4 {
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:15px;
+}
+
+.grid2 {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:15px;
+  margin-top:15px;
+}
+
+.card {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:20px;
+}
+
+.label {
+  color:var(--muted);
+  font-size:13px;
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+
+.big {
+  font-size:32px;
+  font-weight:bold;
+  margin-top:8px;
+}
+
+.unit {
+  font-size:15px;
+  color:var(--muted);
+}
+
+.decision {
+  margin-top:15px;
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:24px;
+}
+
+.action {
+  color:var(--green);
+  font-size:34px;
+  font-weight:bold;
+  margin:8px 0;
+}
+
+.reason {
+  color:#c9d7e6;
+  font-size:16px;
+}
+
+.progress {
+  height:15px;
+  background:#26384a;
+  border-radius:10px;
+  overflow:hidden;
+  margin-top:12px;
+}
+
+.progress div {
+  height:100%;
+  background:var(--green);
+}
+
+.row {
+  display:flex;
+  justify-content:space-between;
+  border-bottom:1px solid var(--border);
+  padding:9px 0;
+}
+
+.row:last-child { border:0; }
+
+.value { font-weight:bold; }
+
+.chartbox {
+  margin-top:15px;
+  height:360px;
+}
+
+footer {
+  color:var(--muted);
+  text-align:center;
+  margin:25px;
+  font-size:12px;
+}
+
+
+.forecast-main {
+  display:grid;
+  grid-template-columns:1.2fr 2fr;
+  gap:20px;
+  margin-top:15px;
+}
+
+.forecast-number {
+  font-size:42px;
+  font-weight:bold;
+  margin-top:8px;
+}
+
+.rating {
+  display:inline-block;
+  margin-top:8px;
+  padding:6px 12px;
+  border-radius:20px;
+  background:#26384a;
+  color:#ffd166;
+  font-weight:bold;
+}
+
+.forecast-chart {
+  height:280px;
+}
+
+.note {
+  color:var(--muted);
+  font-size:12px;
+  margin-top:15px;
+  line-height:1.5;
+}
+
+@media(max-width:800px) {
+  .forecast-main {
+    grid-template-columns:1fr;
+  }
+}
+
+
+.three-day-grid {
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:15px;
+  margin-top:18px;
+}
+
+.forecast-day {
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:18px;
+}
+
+.forecast-date {
+  font-size:18px;
+  font-weight:bold;
+  margin-bottom:5px;
+}
+
+.forecast-kwh {
+  font-size:34px;
+  font-weight:bold;
+  margin:10px 0 4px 0;
+}
+
+.forecast-rating {
+  display:inline-block;
+  padding:5px 10px;
+  border-radius:15px;
+  background:#26384a;
+  color:#ffd166;
+  font-size:12px;
+  font-weight:bold;
+  margin-bottom:12px;
+}
+
+.forecast-detail {
+  display:flex;
+  justify-content:space-between;
+  padding:6px 0;
+  border-bottom:1px solid var(--border);
+  font-size:13px;
+}
+
+.forecast-detail:last-child {
+  border-bottom:0;
+}
+
+.forecast-warning {
+  margin-top:15px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.5;
+}
+
+.three-day-chart {
+  height:300px;
+  margin-top:20px;
+}
+
+@media(max-width:800px) {
+  .three-day-grid {
+    grid-template-columns:1fr;
+  }
+}
+
+
+.export-plan {
+  margin-top:15px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:24px;
+  background:var(--card);
+}
+
+.export-head {
+  display:flex;
+  justify-content:space-between;
+  gap:20px;
+  align-items:flex-start;
+}
+
+.export-decision {
+  font-size:34px;
+  font-weight:bold;
+  margin-top:7px;
+}
+
+.export-number {
+  font-size:46px;
+  font-weight:bold;
+  margin-top:5px;
+}
+
+.export-grid {
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+  margin-top:20px;
+}
+
+.export-stat {
+  background:var(--card2);
+  border-radius:10px;
+  padding:14px;
+}
+
+.export-stat-value {
+  font-size:20px;
+  font-weight:bold;
+  margin-top:5px;
+}
+
+.export-reason {
+  margin-top:18px;
+  line-height:1.6;
+  color:#c9d7e6;
+}
+
+.provisional {
+  display:inline-block;
+  padding:5px 10px;
+  border-radius:15px;
+  background:#26384a;
+  color:#ffd166;
+  font-size:11px;
+  font-weight:bold;
+}
+
+@media(max-width:800px) {
+  .export-grid {
+    grid-template-columns:1fr 1fr;
+  }
+
+  .export-head {
+    display:block;
+  }
+}
+
+@media(max-width:900px) {
+  .grid4 { grid-template-columns:1fr 1fr; }
+  .grid2 { grid-template-columns:1fr; }
+}
+
+@media(max-width:550px) {
+  .grid4 { grid-template-columns:1fr; }
+  .container { padding:12px; }
+}
+
+
+/* ======================================================
+   SOLAR PURPLE / GOLD LIGHT THEME
+   ====================================================== */
+
+body {
+  background:#f7f6f9 !important;
+  color:#251c2e !important;
+}
+
+/* Main cards */
+
+.card,
+.export-plan,
+.forecast-day,
+.export-stat {
+  background:#ffffff !important;
+  border-color:#ddd5e5 !important;
+  box-shadow:0 5px 18px rgba(63,23,109,.07);
+}
+
+/* Secondary cards */
+
+.forecast-day,
+.export-stat {
+  background:#faf8fc !important;
+}
+
+/* Headings */
+
+h1,
+h2,
+h3,
+.title,
+.card-title,
+.forecast-date {
+  color:#3f176d !important;
+}
+
+/* Standard text */
+
+body,
+td,
+strong {
+  color:#251c2e;
+}
+
+.subtitle,
+.label,
+.forecast-warning {
+  color:#746b7c !important;
+}
+
+/* Labels */
+
+.label {
+  text-transform:uppercase;
+  letter-spacing:.7px;
+  font-weight:600;
+}
+
+/* Export YES */
+
+.export-decision {
+  color:#3f176d !important;
+  font-weight:800;
+}
+
+/* Large values */
+
+.export-stat-value,
+.forecast-kwh {
+  color:#3f176d !important;
+}
+
+/* Provisional badge */
+
+.provisional {
+  background:#fff5d6 !important;
+  color:#3f176d !important;
+  border:1px solid #fdbd28 !important;
+  padding:5px 10px;
+  border-radius:20px;
+}
+
+/* Table */
+
+table {
+  background:#ffffff;
+}
+
+thead {
+  background:#eee7f5;
+}
+
+th {
+  color:#3f176d !important;
+  border-color:#ddd5e5 !important;
+}
+
+td {
+  border-color:#e9e3ed !important;
+}
+
+tbody tr:hover {
+  background:#fff8e5 !important;
+}
+
+/* Forecast details */
+
+.forecast-detail {
+  border-color:#e9e3ed !important;
+}
+
+.forecast-detail span {
+  color:#746b7c !important;
+}
+
+.forecast-detail strong {
+  color:#3f176d !important;
+}
+
+/* Yellow solar highlight */
+
+.solar,
+.solar-value,
+.pv-value {
+  color:#d89500 !important;
+}
+
+/* Battery / progress tracks */
+
+.progress,
+.progress-track,
+.battery-track {
+  background:#eee7f5 !important;
+}
+
+.progress-fill,
+.battery-fill {
+  background:#5b2788 !important;
+}
+
+/* Buttons */
+
+button,
+.btn {
+  background:#3f176d !important;
+  color:#ffffff !important;
+  border-color:#3f176d !important;
+}
+
+button:hover,
+.btn:hover {
+  background:#5b2788 !important;
+}
+
+/* Links */
+
+a {
+  color:#5b2788;
+}
+
+/* Inputs */
+
+input,
+select {
+  background:#ffffff !important;
+  color:#251c2e !important;
+  border:1px solid #ddd5e5 !important;
+}
+
+/* Scrollbar */
+
+::-webkit-scrollbar {
+  width:10px;
+  height:10px;
+}
+
+::-webkit-scrollbar-track {
+  background:#f3eff8;
+}
+
+::-webkit-scrollbar-thumb {
+  background:#c9b6d8;
+  border-radius:10px;
+}
+
+/* Yellow accent line */
+
+.export-plan {
+  border-top:4px solid #fdbd28 !important;
+}
+
+/* Current / important values */
+
+.highlight,
+.accent {
+  color:#3f176d !important;
+}
+
+/* Header solar accent */
+
+header {
+  border-bottom-color:#fdbd28 !important;
+}
+
+/* Seven-day table */
+
+#sevenDayPlan {
+  background:#ffffff !important;
+}
+
+#sevenDayPlan thead tr {
+  background:#eee7f5 !important;
+}
+
+#sevenDayPlan tbody tr {
+  background:#ffffff;
+}
+
+#sevenDayPlan tbody tr:hover {
+  background:#fff5d6 !important;
+}
+
+
+/* =========================================================
+   SMART ELECTRICITY DASHBOARD V2
+   ========================================================= */
+
+:root {
+  --se-purple:#4b1f7a;
+  --se-purple-soft:#f7f3fb;
+  --se-green:#16834b;
+  --se-green-bg:#eef9f2;
+  --se-amber:#9a6500;
+  --se-amber-bg:#fff8e7;
+  --se-blue:#1769aa;
+  --se-blue-bg:#eef6fc;
+  --se-red:#b42318;
+  --se-red-bg:#fff1f0;
+}
+
+/* Slightly tighter overall dashboard */
+.container {
+  max-width:1400px;
+}
+
+.card {
+  box-shadow:0 3px 12px rgba(50,25,75,.045);
+}
+
+/* Live cards */
+.grid4 .card {
+  min-height:84px;
+  padding:16px 18px;
+}
+
+.grid4 .big {
+  margin-top:6px;
+}
+
+/* Compact current-decision strip */
+.decision {
+  padding:14px 18px !important;
+  min-height:auto !important;
+  display:grid;
+  grid-template-columns:auto 1fr;
+  column-gap:22px;
+  row-gap:3px;
+  align-items:center;
+}
+
+.decision .label {
+  grid-column:1;
+  grid-row:1 / span 2;
+}
+
+.decision .action {
+  font-size:20px !important;
+  margin:0 !important;
+  line-height:1.2;
+}
+
+.decision .reason {
+  font-size:12px;
+  margin-top:2px !important;
+  opacity:.78;
+}
+
+
+/* =========================================================
+   STAGE 2 DAILY OVERVIEW CSS
+   ========================================================= */
+
+.se-overview-grid {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:16px;
+  margin-top:16px;
+  margin-bottom:18px;
+}
+
+.se-overview-card {
+  padding:20px !important;
+  min-width:0;
+}
+
+.se-card-heading {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+  margin-bottom:16px;
+}
+
+.se-card-title {
+  margin-top:3px;
+  font-size:18px;
+  line-height:1.2;
+  font-weight:800;
+  color:#2c183b;
+}
+
+.se-battery-pill {
+  flex:none;
+  padding:8px 13px;
+  border-radius:999px;
+  background:var(--se-green-bg);
+  color:var(--se-green);
+  font-size:17px;
+  font-weight:800;
+}
+
+.se-weather-temp {
+  flex:none;
+  font-size:25px;
+  font-weight:800;
+  color:var(--se-purple);
+}
+
+.se-energy-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+
+.se-metric {
+  padding:12px 14px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:#faf9fc;
+}
+
+.se-metric span {
+  display:block;
+  margin-bottom:5px;
+  color:var(--muted);
+  font-size:11px;
+}
+
+.se-metric strong {
+  display:block;
+  font-size:17px;
+  line-height:1.25;
+  color:#2c183b;
+}
+
+.se-divider {
+  height:1px;
+  margin:16px 0 10px;
+  background:var(--border);
+}
+
+.se-compact-rows {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  column-gap:24px;
+}
+
+.se-compact-row {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:7px 0;
+  font-size:12px;
+}
+
+.se-compact-row span {
+  color:var(--muted);
+}
+
+.se-compact-row strong {
+  white-space:nowrap;
+}
+
+.se-weather-strip {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+
+.se-weather-strip > div {
+  padding:12px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:#faf9fc;
+}
+
+.se-weather-strip span {
+  display:block;
+  margin-bottom:5px;
+  color:var(--muted);
+  font-size:11px;
+}
+
+.se-weather-strip strong {
+  display:block;
+  font-size:16px;
+}
+
+.se-tariff-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+
+.se-tariff-box {
+  padding:13px 15px;
+  border:1px solid rgba(154,101,0,.18);
+  border-radius:10px;
+  background:var(--se-amber-bg);
+}
+
+.se-tariff-box strong {
+  display:block;
+  margin:5px 0 3px;
+  font-size:19px;
+  color:#2c183b;
+}
+
+.se-tariff-box > span {
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+}
+
+.se-export-rate {
+  border-color:rgba(22,131,75,.18);
+  background:var(--se-green-bg);
+}
+
+.se-export-rate strong {
+  color:var(--se-green);
+}
+
+@media (max-width:850px) {
+  .se-overview-grid {
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width:520px) {
+  .se-energy-grid,
+  .se-compact-rows,
+  .se-tariff-grid {
+    grid-template-columns:1fr;
+  }
+}
+
+
+/* =========================================================
+   TODAY STRATEGY HERO
+   ========================================================= */
+
+.export-plan {
+  margin-top:18px;
+}
+
+#exportPlanCards {
+  display:block !important;
+  margin-top:14px;
+}
+
+/* First card = today's hero */
+#exportPlanCards .forecast-day:first-child {
+  position:relative;
+  padding:22px 26px;
+  border:1px solid rgba(75,31,122,.18);
+  border-radius:14px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(75,31,122,.055),
+      rgba(255,255,255,.96)
+    );
+}
+
+/* Hide redundant large tomorrow/day-after cards.
+   Their data remains in the 7-day table. */
+#exportPlanCards .forecast-day:nth-child(2),
+#exportPlanCards .forecast-day:nth-child(3) {
+  display:none;
+}
+
+#exp1Date {
+  font-size:14px;
+}
+
+#exp1Decision {
+  font-size:30px;
+  margin-top:6px;
+}
+
+#exp1Percent {
+  font-size:30px;
+}
+
+#exportPlanCards .forecast-day:first-child
+.forecast-detail {
+  max-width:520px;
+}
+
+#exp1Reason {
+  margin-top:14px;
+  padding-top:12px;
+  border-top:1px solid var(--border);
+}
+
+/* Semantic FINAL styling */
+#exp1Decision {
+  color:var(--se-green);
+}
+
+/* =========================================================
+   SEVEN DAY PLAN
+   ========================================================= */
+
+#sevenDayPlan {
+  border-radius:10px;
+  overflow:hidden;
+}
+
+#sevenDayPlan th {
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+}
+
+#sevenDayPlan td {
+  padding-top:11px !important;
+  padding-bottom:11px !important;
+}
+
+/* Make today's row easier to identify */
+#sevenDayPlan tbody tr:first-child {
+  background:var(--se-green-bg) !important;
+  box-shadow:inset 3px 0 0 var(--se-green);
+}
+
+/* =========================================================
+   ML + VALIDATION
+   ========================================================= */
+
+#mlPerformance,
+#strategyValidation {
+  margin-top:18px !important;
+  margin-bottom:18px !important;
+}
+
+/* More compact metric tiles */
+#mlPerformance .forecast-day {
+  min-height:auto;
+  padding:12px 14px;
+}
+
+#mlPerformance .export-stat-value {
+  font-size:18px;
+}
+
+/* Validation table slightly calmer */
+#strategyValidationTable thead {
+  background:#f4eff8;
+}
+
+#strategyValidationTable tbody tr:nth-child(odd) {
+  background:#fbfafd;
+}
+
+/* =========================================================
+   BOTTOM SUMMARY
+   ========================================================= */
+
+.export-grid {
+  gap:10px !important;
+}
+
+.export-stat {
+  padding:14px !important;
+}
+
+
+/* Collapsible engineering sections */
+
+.se-details {
+  margin-top:16px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:#fff;
+  overflow:hidden;
+}
+
+.se-details > summary {
+  list-style:none;
+  cursor:pointer;
+  padding:16px 18px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+}
+
+.se-details > summary::-webkit-details-marker {
+  display:none;
+}
+
+.se-details > summary strong {
+  display:block;
+  color:var(--se-purple);
+  font-size:16px;
+}
+
+.se-details > summary small {
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+}
+
+.se-summary-action {
+  font-size:12px;
+  font-weight:700;
+  color:var(--se-purple);
+  white-space:nowrap;
+}
+
+.se-details[open] > summary {
+  border-bottom:1px solid var(--border);
+  background:#faf8fc;
+}
+
+.se-details[open] .se-summary-action {
+  font-size:0;
+}
+
+.se-details[open] .se-summary-action::after {
+  content:"Hide details";
+  font-size:12px;
+}
+
+.se-details > .card {
+  border:0 !important;
+  box-shadow:none !important;
+  margin:0 !important;
+  border-radius:0 !important;
+}
+
+
+/* Responsive */
+@media (max-width:800px) {
+
+  .decision {
+    display:block;
+  }
+
+  .decision .action {
+    margin-top:6px !important;
+  }
+
+  #exportPlanCards .forecast-day:first-child {
+    padding:18px;
+  }
+}
+
+
+
+
+/* =========================================================
+   COMPACT TODAY STRATEGY
+   ========================================================= */
+
+.se-strategy-hero {
+  margin-top:14px;
+  padding:18px 20px;
+  border:1px solid rgba(75,31,122,.16);
+  border-radius:12px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(75,31,122,.045),
+      rgba(255,255,255,.98)
+    );
+}
+
+.se-strategy-top {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:20px;
+}
+
+.se-strategy-top .forecast-date {
+  margin-top:4px;
+  font-size:18px;
+  font-weight:800;
+  color:var(--se-purple);
+}
+
+.se-strategy-decision {
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.se-strategy-decision strong {
+  font-size:23px;
+  color:var(--se-green);
+}
+
+.se-strategy-metrics {
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:10px;
+  margin-top:14px;
+}
+
+.se-strategy-metric {
+  padding:11px 13px;
+  border:1px solid var(--border);
+  border-radius:9px;
+  background:#fff;
+}
+
+.se-strategy-metric span:first-child {
+  display:block;
+  margin-bottom:4px;
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  color:var(--muted);
+}
+
+.se-strategy-metric strong {
+  font-size:17px;
+  color:#321653;
+}
+
+.se-strategy-bottom {
+  display:grid;
+  grid-template-columns:220px 1fr;
+  gap:18px;
+  align-items:center;
+  margin-top:12px;
+  padding-top:11px;
+  border-top:1px solid var(--border);
+}
+
+.se-strategy-bottom strong {
+  margin-left:8px;
+  color:var(--se-purple);
+}
+
+.se-strategy-bottom .forecast-warning {
+  margin:0 !important;
+  padding:0 !important;
+  border:0 !important;
+  font-size:11px;
+  color:var(--muted);
+}
+
+.se-hidden-plan {
+  display:none !important;
+}
+
+@media (max-width:900px) {
+  .se-strategy-metrics {
+    grid-template-columns:repeat(3,1fr);
+  }
+
+  .se-strategy-bottom {
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width:600px) {
+  .se-strategy-top {
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .se-strategy-metrics {
+    grid-template-columns:repeat(2,1fr);
+  }
+}
+
+
+
+/* =========================================================
+   STRATEGY PANEL FINAL LAYOUT
+   ========================================================= */
+
+/* Keep overall plan compact */
+.export-plan {
+  padding:18px 20px !important;
+}
+
+/* Today's strategy */
+#exportPlanCards {
+  display:block !important;
+  margin-top:12px !important;
+}
+
+#exportPlanCards > .forecast-day:first-child {
+  display:grid !important;
+  grid-template-columns:
+    130px
+    150px
+    150px
+    minmax(180px,1fr)
+    130px !important;
+
+  column-gap:20px;
+  row-gap:7px;
+  align-items:center;
+
+  min-height:0 !important;
+  padding:16px 20px !important;
+
+  border:1px solid var(--border) !important;
+  border-radius:10px !important;
+  background:#fbf9fd !important;
+}
+
+/* Date */
+#exp1Date {
+  grid-column:1;
+  grid-row:1 / span 2;
+
+  font-size:15px !important;
+  font-weight:800;
+  margin:0 !important;
+}
+
+/* EXPORT? label */
+#exportPlanCards > .forecast-day:first-child > .label {
+  grid-column:2;
+  grid-row:1;
+
+  margin:0 !important;
+}
+
+/* YES / FINAL */
+#exp1Decision {
+  grid-column:2;
+  grid-row:2;
+
+  font-size:24px !important;
+  line-height:1 !important;
+  margin:0 !important;
+  color:var(--se-green) !important;
+}
+
+/* Export percentage */
+#exportPlanCards > .forecast-day:first-child > .forecast-kwh {
+  grid-column:3;
+  grid-row:1 / span 2;
+
+  font-size:24px !important;
+  line-height:1.1;
+  margin:0 !important;
+}
+
+/* kWh recommended */
+#exportPlanCards > .forecast-day:first-child > .subtitle {
+  grid-column:4;
+  grid-row:1 / span 2;
+
+  margin:0 !important;
+  font-size:13px;
+}
+
+/* Detail fields */
+#exportPlanCards > .forecast-day:first-child > .forecast-detail {
+  display:none !important;
+}
+
+/* Explanation */
+#exp1Reason {
+  grid-column:1 / -1;
+  grid-row:3;
+
+  margin:7px 0 0 !important;
+  padding:10px 0 0 !important;
+
+  border-top:1px solid var(--border) !important;
+
+  font-size:11px !important;
+  color:var(--muted);
+}
+
+/* Hide unused large day cards */
+#exportPlanCards > .forecast-day:nth-child(2),
+#exportPlanCards > .forecast-day:nth-child(3) {
+  display:none !important;
+}
+
+/* =========================================================
+   CLEANER 7-DAY TABLE
+   ========================================================= */
+
+#sevenDayPlan {
+  margin-top:0;
+}
+
+#sevenDayPlan th {
+  padding:9px 10px !important;
+  font-size:10px !important;
+}
+
+#sevenDayPlan td {
+  padding:9px 10px !important;
+  font-size:11px;
+  vertical-align:middle;
+}
+
+#sevenDayPlan tbody tr:first-child {
+  background:#eef9f2 !important;
+}
+
+/* Less vertical space between hero and table */
+.export-plan > div[style*="overflow-x:auto"] {
+  margin-top:14px !important;
+}
+
+/* Mobile */
+@media (max-width:900px) {
+
+  #exportPlanCards > .forecast-day:first-child {
+    grid-template-columns:1fr 1fr !important;
+  }
+
+  #exp1Date {
+    grid-column:1;
+    grid-row:auto;
+  }
+
+  #exportPlanCards > .forecast-day:first-child > .label,
+  #exp1Decision,
+  #exportPlanCards > .forecast-day:first-child > .forecast-kwh,
+  #exportPlanCards > .forecast-day:first-child > .subtitle {
+    grid-column:auto;
+    grid-row:auto;
+  }
+
+  #exp1Reason {
+    grid-column:1 / -1;
+    grid-row:auto;
+  }
+}
+
+
+
+
+/* =========================================================
+   THREE-DAY STRATEGY CARDS
+   ========================================================= */
+
+#exportPlanCards {
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  gap:12px !important;
+  margin-top:14px !important;
+}
+
+/* Bring all three days back */
+#exportPlanCards > .forecast-day:nth-child(1),
+#exportPlanCards > .forecast-day:nth-child(2),
+#exportPlanCards > .forecast-day:nth-child(3) {
+  display:block !important;
+  min-height:0 !important;
+  padding:16px 18px !important;
+  border:1px solid var(--border) !important;
+  border-radius:10px !important;
+  background:#fbf9fd !important;
+}
+
+/* Today's card gets subtle emphasis */
+#exportPlanCards > .forecast-day:first-child {
+  box-shadow:inset 3px 0 0 var(--se-green) !important;
+  background:var(--se-green-bg) !important;
+}
+
+/* Dates */
+#exportPlanCards .forecast-date {
+  font-size:14px !important;
+  font-weight:800 !important;
+  margin-bottom:5px !important;
+}
+
+/* YES / NO */
+#exportPlanCards .export-decision {
+  font-size:23px !important;
+  line-height:1.1 !important;
+  margin:5px 0 !important;
+}
+
+/* Percentage */
+#exportPlanCards .forecast-kwh {
+  font-size:23px !important;
+  line-height:1.1 !important;
+  margin:7px 0 2px !important;
+}
+
+/* kWh recommended */
+#exportPlanCards > .forecast-day > .subtitle {
+  margin-bottom:10px !important;
+}
+
+/* Bring useful details back */
+#exportPlanCards > .forecast-day > .forecast-detail {
+  display:flex !important;
+  justify-content:space-between;
+  gap:12px;
+  padding:5px 0 !important;
+  max-width:none !important;
+  border-bottom:1px solid var(--border);
+  font-size:11px;
+}
+
+/* Explanation */
+#exportPlanCards .forecast-warning {
+  margin-top:10px !important;
+  padding-top:8px !important;
+  border-top:0 !important;
+  font-size:10px !important;
+  line-height:1.35;
+  color:var(--muted);
+}
+
+/* Don't let previous single-card grid rules interfere */
+#exp1Date,
+#exp1Decision,
+#exportPlanCards > .forecast-day:first-child > .label,
+#exportPlanCards > .forecast-day:first-child > .forecast-kwh,
+#exportPlanCards > .forecast-day:first-child > .subtitle,
+#exp1Reason {
+  grid-column:auto !important;
+  grid-row:auto !important;
+}
+
+/* Tablet */
+@media (max-width:900px) {
+  #exportPlanCards {
+    grid-template-columns:1fr 1fr !important;
+  }
+}
+
+/* Phone */
+@media (max-width:600px) {
+  #exportPlanCards {
+    grid-template-columns:1fr !important;
+  }
+}
+
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+<div>
+<h1>⚡ Smart Electricity</h1>
+<div class="subtitle">Solar • Battery • Grid Optimisation</div>
+</div>
+
+<div>
+<span class="online">● ONLINE</span><br>
+<span class="subtitle" id="updated">Loading...</span>
+</div>
+</header>
+
+<div class="grid4">
+
+<div class="card">
+<div class="label">☀ Solar</div>
+<div class="big"><span id="pv">--</span> <span class="unit">kW</span></div>
+</div>
+
+<div class="card">
+<div class="label">🏠 House Load</div>
+<div class="big"><span id="load">--</span> <span class="unit">kW</span></div>
+</div>
+
+<div class="card">
+<div class="label">🔋 Battery</div>
+<div class="big"><span id="soc">--</span><span class="unit">%</span></div>
+<div class="progress"><div id="socbar"></div></div>
+</div>
+
+<div class="card">
+<div class="label">⚡ Grid</div>
+<div class="big"><span id="grid">--</span> <span class="unit">kW</span></div>
+<div class="subtitle" id="gridmode"></div>
+</div>
+
+</div>
+
+<div class="decision">
+<div class="label">Current Decision</div>
+<div class="action" id="action">LOADING</div>
+<div class="reason" id="reason"></div>
+</div>
+
+
+<!-- COMPACT DAILY OVERVIEW -->
+<div class="se-overview-grid">
+
+  <!-- TODAY ENERGY + BATTERY -->
+  <div class="card se-overview-card">
+
+    <div class="se-card-heading">
+      <div>
+        <div class="label">TODAY'S ENERGY</div>
+        <div class="se-card-title">
+          Energy & Battery
+        </div>
+      </div>
+
+      <div class="se-battery-pill">
+        🔋 <span id="bSOC">--</span>
+      </div>
+    </div>
+
+    <div class="se-energy-grid">
+
+      <div class="se-metric">
+        <span>☀ Solar</span>
+        <strong id="todayPV">--</strong>
+      </div>
+
+      <div class="se-metric">
+        <span>🏠 Consumption</span>
+        <strong id="todayLoad">--</strong>
+      </div>
+
+      <div class="se-metric">
+        <span>↓ Grid Import</span>
+        <strong id="todayImport">--</strong>
+      </div>
+
+      <div class="se-metric">
+        <span>↑ Grid Export</span>
+        <strong id="todayExport">--</strong>
+      </div>
+
+    </div>
+
+    <div class="se-divider"></div>
+
+    <div class="se-compact-rows">
+
+      <div class="se-compact-row">
+        <span>Stored energy</span>
+        <strong id="stored">--</strong>
+      </div>
+
+      <div class="se-compact-row">
+        <span>Available above 10%</span>
+        <strong id="available">--</strong>
+      </div>
+
+      <div class="se-compact-row">
+        <span>Charging</span>
+        <strong id="charge">--</strong>
+      </div>
+
+      <div class="se-compact-row">
+        <span>Discharging</span>
+        <strong id="discharge">--</strong>
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <!-- WEATHER + TARIFF -->
+  <div class="card se-overview-card">
+
+    <div class="se-card-heading">
+      <div>
+        <div class="label">CONDITIONS</div>
+        <div class="se-card-title">
+          Weather & Tariff
+        </div>
+      </div>
+
+      <div class="se-weather-temp">
+        <span id="temp">--</span>
+      </div>
+    </div>
+
+    <div class="se-weather-strip">
+
+      <div>
+        <span>☁ Cloud</span>
+        <strong id="cloud">--</strong>
+      </div>
+
+      <div>
+        <span>🌧 Rain</span>
+        <strong id="rain">--</strong>
+      </div>
+
+      <!-- Keep radiation available to JS but visually secondary -->
+      <div>
+        <span>☀ Radiation</span>
+        <strong id="radiation">--</strong>
+      </div>
+
+    </div>
+
+    <div class="se-divider"></div>
+
+    <div class="se-tariff-grid">
+
+      <div class="se-tariff-box">
+        <div class="label">GRID IMPORT</div>
+        <strong id="importRate">--</strong>
+        <span id="importPeriod">--</span>
+      </div>
+
+      <div class="se-tariff-box se-export-rate">
+        <div class="label">GRID EXPORT</div>
+        <strong id="exportRate">--</strong>
+        <span id="exportPeriod">--</span>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<div class="export-plan">
+
+  <div class="label">
+    7-Day Battery & Export Plan
+  </div>
+
+  <div style="margin-top:7px">
+    <span class="provisional">
+      RULE-BASED / PROVISIONAL
+    </span>
+  </div>
+
+  <div id="exportPlanCards" class="se-strategy-hero">
+
+    <div class="se-strategy-top">
+
+      <div>
+        <div class="label">TODAY'S STRATEGY</div>
+        <div class="forecast-date"
+             id="exp1Date">--</div>
+      </div>
+
+      <div class="se-strategy-decision">
+        <span class="label">EXPORT</span>
+        <strong id="exp1Decision">--</strong>
+      </div>
+
+    </div>
+
+    <div class="se-strategy-metrics">
+
+      <div class="se-strategy-metric">
+        <span>Recommended</span>
+        <strong>
+          <span id="exp1Percent">--</span>%
+        </strong>
+      </div>
+
+      <div class="se-strategy-metric">
+        <span>Export Energy</span>
+        <strong>
+          <span id="exp1Kwh">--</span> kWh
+        </strong>
+      </div>
+
+      <div class="se-strategy-metric">
+        <span>Starting SOC</span>
+        <strong id="exp1Start">--</strong>
+      </div>
+
+      <div class="se-strategy-metric">
+        <span>Target SOC</span>
+        <strong id="exp1Target">--</strong>
+      </div>
+
+      <div class="se-strategy-metric">
+        <span>Revenue</span>
+        <strong id="exp1Revenue">--</strong>
+      </div>
+
+    </div>
+
+    <div class="se-strategy-bottom">
+
+      <div>
+        <span class="label">SOLAR FORECAST</span>
+        <strong id="exp1Solar">--</strong>
+      </div>
+
+      <div class="forecast-warning"
+           id="exp1Reason"></div>
+
+    </div>
+
+
+    <!-- Hidden compatibility fields.
+         Existing JS still updates days 2 and 3. -->
+
+    <div class="se-hidden-plan">
+      <span id="exp2Date"></span>
+      <span id="exp2Decision"></span>
+      <span id="exp2Percent"></span>
+      <span id="exp2Kwh"></span>
+      <span id="exp2Solar"></span>
+      <span id="exp2Start"></span>
+      <span id="exp2Target"></span>
+      <span id="exp2Revenue"></span>
+      <span id="exp2Reason"></span>
+
+      <span id="exp3Date"></span>
+      <span id="exp3Decision"></span>
+      <span id="exp3Percent"></span>
+      <span id="exp3Kwh"></span>
+      <span id="exp3Solar"></span>
+      <span id="exp3Start"></span>
+      <span id="exp3Target"></span>
+      <span id="exp3Revenue"></span>
+      <span id="exp3Reason"></span>
+    </div>
+
+  </div>
+
+
+  
+<div style="overflow-x:auto;margin-top:22px">
+
+<table id="sevenDayPlan"
+       style="width:100%;border-collapse:collapse;font-size:13px">
+
+<thead>
+<tr style="text-align:left;color:var(--muted)">
+  <th style="padding:10px">Day</th>
+  <th style="padding:10px">Solar Forecast</th>
+  <th style="padding:10px">Rating</th>
+  <th style="padding:10px">Export?</th>
+  <th style="padding:10px">Recommended Export</th>
+  <th style="padding:10px">Start SOC</th>
+  <th style="padding:10px">Before 5 PM</th>
+  <th style="padding:10px">Midnight</th>
+  <th style="padding:10px">Next Solar</th>
+  <th style="padding:10px">FoxESS Min</th>
+  <th style="padding:10px">Revenue</th>
+</tr>
+</thead>
+
+<tbody id="sevenDayPlanBody">
+</tbody>
+
+</table>
+
+</div>
+
+
+
+<!-- ML LEARNING PERFORMANCE -->
+<details class="se-details" id="mlDetails">
+<summary>
+  <span>
+    <strong>ML Learning & Safety</strong>
+    <small>Shadow learning, accuracy and readiness</small>
+  </span>
+  <span class="se-summary-action">View details</span>
+</summary>
+
+<div class="card" id="mlPerformance"
+     style="margin-top:24px;margin-bottom:24px">
+
+  <div style="display:flex;justify-content:space-between;
+              align-items:center;gap:12px;flex-wrap:wrap">
+
+    <div>
+      <h2 style="margin:0">ML Learning Performance</h2>
+      <div class="small" style="margin-top:5px">
+        Genuine frozen predictions compared with subsequent actual results
+      </div>
+    </div>
+
+    <div id="mlPerfStatus"
+         style="padding:7px 12px;border-radius:8px;
+                background:rgba(255,209,102,.12);
+                border:1px solid rgba(255,209,102,.35);
+                font-weight:700">
+      WAITING FOR VALIDATED DAYS
+    </div>
+
+  </div>
+
+  <div style="display:grid;
+              grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+              gap:12px;margin-top:20px">
+
+    <div class="forecast-day">
+      <div class="label">VALIDATED DAYS</div>
+      <div class="export-stat-value"
+           id="mlPerfDays">0</div>
+    </div>
+
+    <div class="forecast-day">
+      <div class="label">BASELINE MAE</div>
+      <div class="export-stat-value"
+           id="mlPerfBaseline">—</div>
+    </div>
+
+    <div class="forecast-day">
+      <div class="label">ML v2 MAE</div>
+      <div class="export-stat-value"
+           id="mlPerfML">—</div>
+    </div>
+
+    <div class="forecast-day">
+      <div class="label">SAFE ML MAE</div>
+      <div class="export-stat-value"
+           id="mlPerfSafe">—</div>
+    </div>
+
+    <div class="forecast-day">
+      <div class="label">ML IMPROVEMENT</div>
+      <div class="export-stat-value"
+           id="mlPerfImprovement">—</div>
+    </div>
+
+    <div class="forecast-day">
+      <div class="label">ML WINS</div>
+      <div class="export-stat-value"
+           id="mlPerfWins">—</div>
+    </div>
+
+    <div class="forecast-day">
+      <div class="label">ML BIAS</div>
+      <div class="export-stat-value"
+           id="mlPerfBias">—</div>
+    </div>
+
+    <div class="forecast-day">
+      <div class="label">UNDERPREDICTION DAYS</div>
+      <div class="export-stat-value"
+           id="mlPerfUnder">—</div>
+    </div>
+
+  </div>
+
+  <!-- ML READINESS / SAFETY -->
+  <div style="margin-top:20px;
+              padding-top:18px;
+              border-top:1px solid var(--border)">
+
+    <div class="label" style="margin-bottom:12px">
+      ML READINESS & SAFETY
+    </div>
+
+    <div style="display:grid;
+                grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+                gap:12px">
+
+      <div class="forecast-day">
+        <div class="label">READINESS</div>
+        <div class="export-stat-value"
+             id="mlReadyStatus">0 / 7</div>
+      </div>
+
+      <div class="forecast-day">
+        <div class="label">ACCURACY GATE</div>
+        <div class="export-stat-value"
+             id="mlAccuracyGate">WAITING</div>
+      </div>
+
+      <div class="forecast-day">
+        <div class="label">BIAS GATE</div>
+        <div class="export-stat-value"
+             id="mlBiasGate">WAITING</div>
+      </div>
+
+      <div class="forecast-day">
+        <div class="label">SAFETY GATE</div>
+        <div class="export-stat-value"
+             id="mlSafetyGate">WAITING</div>
+      </div>
+
+      <div class="forecast-day">
+        <div class="label">RESERVE SUCCESS</div>
+        <div class="export-stat-value"
+             id="mlReserveSuccess">—</div>
+      </div>
+
+      <div class="forecast-day">
+        <div class="label">WORST SAFE SHORTFALL</div>
+        <div class="export-stat-value"
+             id="mlWorstSafe">—</div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <div class="small"
+       id="mlPerfNote"
+       style="margin-top:14px">
+    Waiting for the first validated ML v2 prediction.
+  </div>
+
+</div>
+</details>
+
+<!-- STRATEGY VALIDATION -->
+<details class="se-details" id="validationDetails">
+<summary>
+  <span>
+    <strong>Strategy Validation</strong>
+    <small>Prediction vs actual FoxESS behaviour</small>
+  </span>
+  <span class="se-summary-action">View details</span>
+</summary>
+
+<div class="card" id="strategyValidation"
+     style="margin-top:24px;margin-bottom:24px">
+
+  <div style="display:flex;justify-content:space-between;
+              align-items:center;gap:12px;flex-wrap:wrap">
+
+    <div>
+      <h2 style="margin:0">Strategy Validation</h2>
+      <div class="small" style="margin-top:5px">
+        Last 7 days · ML Prediction vs Actual FoxESS behaviour
+      </div>
+    </div>
+
+    <div style="padding:7px 12px;border-radius:8px;
+                background:rgba(255,209,102,.12);
+                border:1px solid rgba(255,209,102,.35);
+                font-weight:700">
+      SHADOW MODE · NO FOXESS CONTROL
+    </div>
+
+  </div>
+
+  <div style="margin-top:18px;
+              padding:10px 12px;
+              border:1px solid var(--border);
+              border-radius:8px;
+              background:var(--card2)">
+
+    <strong>Validation Window:</strong>
+    Last 7 days
+
+    <span class="small" style="margin-left:12px">
+      Actual rows remain PENDING until FoxESS history
+      and next-morning SOC are available.
+    </span>
+
+  </div>
+
+  <div style="overflow-x:auto;margin-top:18px">
+
+    <table id="strategyValidationTable"
+           style="width:100%;
+                  min-width:2150px;
+                  border-collapse:collapse;
+                  font-size:13px">
+
+      <thead>
+        <tr style="text-align:left;color:var(--muted);
+                   border-bottom:1px solid var(--border)">
+
+          <th style="padding:10px">Date</th>
+          <th style="padding:10px">Type</th>
+
+          <th style="padding:10px">Solar<br>kWh</th>
+
+          <th style="padding:10px">Baseline<br>Load</th>
+          <th style="padding:10px">ML v2<br>Load</th>
+          <th style="padding:10px">Safe ML<br>Load</th>
+          <th style="padding:10px">Actual<br>Load</th>
+
+          <th style="padding:10px">Start<br>SOC</th>
+          <th style="padding:10px">SOC @<br>5PM</th>
+
+          <th style="padding:10px">Export<br>kWh</th>
+          <th style="padding:10px">Export /<br>Battery %</th>
+
+          <th style="padding:10px">End Export<br>SOC</th>
+          <th style="padding:10px">Next Solar<br>SOC</th>
+
+          <th style="padding:10px">Overnight<br>Load kWh</th>
+
+          <th style="padding:10px">Battery → Load<br>kWh</th>
+          <th style="padding:10px">Grid → Load<br>kWh</th>
+
+          <th style="padding:10px">Grid Import<br>kWh</th>
+
+          <th style="padding:10px">SOC<br>Cutoff</th>
+
+          <th style="padding:10px">Import<br>Cost</th>
+          <th style="padding:10px">Export<br>Revenue</th>
+          <th style="padding:10px">Net<br>$</th>
+
+          <th style="padding:10px">Status</th>
+
+        </tr>
+      </thead>
+
+      <tbody id="strategyValidationBody">
+
+        <tr>
+          <td colspan="22"
+              style="padding:18px;text-align:center;
+                     color:var(--muted)">
+            Loading Strategy Validation…
+          </td>
+        </tr>
+
+      </tbody>
+
+    </table>
+
+  </div>
+
+</div>
+</details>
+
+<div class="export-grid">
+
+    <div class="export-stat">
+      <div class="label">
+        FoxESS Minimum
+      </div>
+
+      <div class="export-stat-value">
+        10%
+      </div>
+
+      <div class="subtitle">
+        4.2 kWh hard minimum
+      </div>
+    </div>
+
+
+    <div class="export-stat">
+      <div class="label">
+        Predicted Daily Load
+      </div>
+
+      <div class="export-stat-value"
+           id="planDailyLoad">--</div>
+    </div>
+
+
+    <div class="export-stat">
+      <div class="label">
+        7-Day Export
+      </div>
+
+      <div class="export-stat-value"
+           id="planTotalExport">--</div>
+    </div>
+
+
+    <div class="export-stat">
+      <div class="label">
+        Potential Revenue
+      </div>
+
+      <div class="export-stat-value"
+           id="planTotalRevenue">--</div>
+    </div>
+
+  </div>
+
+
+  <div class="forecast-warning">
+    All seven days are simulated sequentially.
+    Export on one day changes the battery available on the
+    following day. The planner also looks ahead for poor-solar
+    periods before recommending export. No inverter settings
+    are changed.
+  </div>
+
+</div>
+
+<div class="card" style="margin-top:15px">
+
+  <div class="label">7-Day Solar & Weather Forecast</div>
+
+  <div class="three-day-grid">
+
+    <div class="forecast-day">
+      <div class="forecast-date" id="day1Date">--</div>
+
+      <div class="forecast-kwh">
+        <span id="day1PV">--</span>
+        <span class="unit">kWh</span>
+      </div>
+
+      <div class="forecast-rating" id="day1Rating">--</div>
+
+      <div class="forecast-detail">
+        <span>🌡 Temperature</span>
+        <strong id="day1Temp">--</strong>
+      </div>
+
+      <div class="forecast-detail">
+        <span>☁ Cloud</span>
+        <strong id="day1Cloud">--</strong>
+      </div>
+
+      <div class="forecast-detail">
+        <span>🌧 Rain</span>
+        <strong id="day1Rain">--</strong>
+      </div>
+
+      <div class="forecast-detail">
+        <span>☀ Peak radiation</span>
+        <strong id="day1Radiation">--</strong>
+      </div>
+    </div>
+
+
+    <div class="forecast-day">
+      <div class="forecast-date" id="day2Date">--</div>
+
+      <div class="forecast-kwh">
+        <span id="day2PV">--</span>
+        <span class="unit">kWh</span>
+      </div>
+
+      <div class="forecast-rating" id="day2Rating">--</div>
+
+      <div class="forecast-detail">
+        <span>🌡 Temperature</span>
+        <strong id="day2Temp">--</strong>
+      </div>
+
+      <div class="forecast-detail">
+        <span>☁ Cloud</span>
+        <strong id="day2Cloud">--</strong>
+      </div>
+
+      <div class="forecast-detail">
+        <span>🌧 Rain</span>
+        <strong id="day2Rain">--</strong>
+      </div>
+
+      <div class="forecast-detail">
+        <span>☀ Peak radiation</span>
+        <strong id="day2Radiation">--</strong>
+      </div>
+    </div>
+
+
+    <div class="forecast-day">
+      <div class="forecast-date" id="day3Date">--</div>
+
+      <div class="forecast-kwh">
+        <span id="day3PV">--</span>
+        <span class="unit">kWh</span>
+      </div>
+
+      <div class="forecast-rating" id="day3Rating">--</div>
+
+      <div class="forecast-detail">
+        <span>🌡 Temperature</span>
+        <strong id="day3Temp">--</strong>
+      </div>
+
+      <div class="forecast-detail">
+        <span>☁ Cloud</span>
+        <strong id="day3Cloud">--</strong>
+      </div>
+
+      <div class="forecast-detail">
+        <span>🌧 Rain</span>
+        <strong id="day3Rain">--</strong>
+      </div>
+
+      <div class="forecast-detail">
+        <span>☀ Peak radiation</span>
+        <strong id="day3Radiation">--</strong>
+      </div>
+    </div>
+
+  </div>
+
+
+  <div class="three-day-chart">
+    <canvas id="threeDayChart"></canvas>
+  </div>
+
+
+  <div class="forecast-warning">
+    ⚠ Solar generation is currently a weather-based estimate for the
+    9.7 kW solar array. The ML solar model will replace this estimate
+    after historical FoxESS and weather data are combined.
+    Battery export decisions are not yet based on these estimates.
+  </div>
+
+</div>
+
+<div class="card chartbox">
+<div class="label">Recent Power History</div>
+<canvas id="powerChart"></canvas>
+</div>
+
+<div class="card" style="margin-top:15px">
+<div class="label">Data Health</div>
+
+<div class="row">
+<span>FoxESS readings</span>
+<span class="value" id="foxcount">--</span>
+</div>
+
+<div class="row">
+<span>Weather records</span>
+<span class="value" id="weathercount">--</span>
+</div>
+
+<div class="row">
+<span>ML feature rows</span>
+<span class="value" id="featurecount">--</span>
+</div>
+
+<div class="row">
+<span>Mode</span>
+<span class="value">READ ONLY</span>
+</div>
+
+</div>
+
+<footer>
+Smart Electricity Phase 1 • No automatic battery control
+</footer>
+
+</div>
+
+<script>
+let chart;
+
+function n(v,d=2) {
+  if(v === null || v === undefined) return "--";
+  return Number(v).toFixed(d);
+}
+
+async function updateStatus() {
+
+  const r = await fetch("/api/status");
+  const d = await r.json();
+
+  if(d.error) return;
+
+  const f = d.foxess;
+
+  document.getElementById("updated").textContent =
+    "Updated " + new Date(d.time).toLocaleTimeString();
+
+  document.getElementById("pv").textContent = n(f.pv_kw,3);
+  document.getElementById("load").textContent = n(f.load_kw,3);
+  document.getElementById("soc").textContent = n(f.battery_soc,0);
+
+  document.getElementById("socbar").style.width =
+    Math.max(0,Math.min(100,f.battery_soc)) + "%";
+
+  const imp = Number(f.grid_import_kw || 0);
+  const exp = Number(f.grid_export_kw || 0);
+
+  if(exp > imp) {
+    document.getElementById("grid").textContent = n(exp,3);
+    document.getElementById("gridmode").textContent = "EXPORTING";
+  } else {
+    document.getElementById("grid").textContent = n(imp,3);
+    document.getElementById("gridmode").textContent = "IMPORTING";
+  }
+
+  document.getElementById("action").textContent =
+    d.decision.decision;
+
+  document.getElementById("reason").textContent =
+    d.decision.reason;
+
+  document.getElementById("bSOC").textContent =
+    n(d.battery.soc,0) + "%";
+
+  document.getElementById("stored").textContent =
+    n(d.battery.stored_kwh) + " kWh";
+
+  document.getElementById("available").textContent =
+    n(d.battery.above_min_kwh) + " kWh";
+
+  document.getElementById("charge").textContent =
+    n(f.battery_charge_kw,3) + " kW";
+
+  document.getElementById("discharge").textContent =
+    n(f.battery_discharge_kw,3) + " kW";
+
+  document.getElementById("importRate").textContent =
+    n(d.tariff.import_rate,3) + " c/kWh";
+
+  document.getElementById("importPeriod").textContent =
+    d.tariff.import_period;
+
+  document.getElementById("exportRate").textContent =
+    n(d.tariff.export_rate,3) + " c/kWh";
+
+  document.getElementById("exportPeriod").textContent =
+    d.tariff.export_period;
+
+  if(d.weather) {
+    document.getElementById("temp").textContent =
+      n(d.weather.temperature,1) + " °C";
+
+    document.getElementById("cloud").textContent =
+      n(d.weather.cloud_cover,0) + "%";
+
+    document.getElementById("radiation").textContent =
+      n(d.weather.shortwave_radiation,0) + " W/m²";
+
+    document.getElementById("rain").textContent =
+      n(d.weather.precipitation,1) + " mm";
+  }
+
+  document.getElementById("foxcount").textContent =
+    d.counts.foxess_live;
+
+  document.getElementById("weathercount").textContent =
+    d.counts.weather;
+
+  document.getElementById("featurecount").textContent =
+    d.counts.ml_features;
+}
+
+
+async function updateToday() {
+
+  const r = await fetch("/api/today");
+  const d = await r.json();
+
+  document.getElementById("todayPV").textContent =
+    n(d.pv_kwh) + " kWh";
+
+  document.getElementById("todayLoad").textContent =
+    n(d.load_kwh) + " kWh";
+
+  document.getElementById("todayImport").textContent =
+    n(d.import_kwh) + " kWh";
+
+  document.getElementById("todayExport").textContent =
+    n(d.export_kwh) + " kWh";
+}
+
+
+async function updateChart() {
+
+  const r = await fetch("/api/history");
+  const d = await r.json();
+
+  const labels = d.map(x =>
+    new Date(x.timestamp).toLocaleTimeString([], {
+      hour:"2-digit",
+      minute:"2-digit"
+    })
+  );
+
+  const data = {
+    labels:labels,
+    datasets:[
+      {
+        label:"Solar",
+        data:d.map(x=>x.pv_kw),
+        borderColor:"#ffd166",
+        tension:.25,
+        pointRadius:0
+      },
+      {
+        label:"House",
+        data:d.map(x=>x.load_kw),
+        borderColor:"#56a8ff",
+        tension:.25,
+        pointRadius:0
+      },
+      {
+        label:"Grid Import",
+        data:d.map(x=>x.grid_import_kw),
+        borderColor:"#ff6b6b",
+        tension:.25,
+        pointRadius:0
+      },
+      {
+        label:"Grid Export",
+        data:d.map(x=>x.grid_export_kw),
+        borderColor:"#42d392",
+        tension:.25,
+        pointRadius:0
+      }
+    ]
+  };
+
+  if(chart) {
+    chart.data = data;
+    chart.update();
+    return;
+  }
+
+  chart = new Chart(
+    document.getElementById("powerChart"),
+    {
+      type:"line",
+      data:data,
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        interaction:{
+          mode:"index",
+          intersect:false
+        },
+        scales:{
+          x:{
+            ticks:{color:"#8fa5bc",maxTicksLimit:12},
+            grid:{color:"#16283a"}
+          },
+          y:{
+            ticks:{color:"#8fa5bc"},
+            grid:{color:"#16283a"},
+            title:{
+              display:true,
+              text:"kW",
+              color:"#8fa5bc"
+            }
+          }
+        },
+        plugins:{
+          legend:{
+            labels:{color:"#edf5ff"}
+          }
+        }
+      }
+    }
+  );
+}
+
+
+
+
+let threeDayChart;
+
+function forecastDate(value) {
+
+  const d = new Date(value + "T12:00:00");
+
+  return d.toLocaleDateString([], {
+    weekday:"short",
+    day:"numeric",
+    month:"short"
+  });
+}
+
+
+async function updateTomorrow() {
+
+  const r = await fetch("/api/tomorrow");
+  const d = await r.json();
+
+  if(!d.available || !d.days) {
+    return;
+  }
+
+
+  d.days.slice(0,3).forEach((day,index) => {
+
+    const n = index + 1;
+
+    if(!day.available) {
+      document.getElementById(
+        "day" + n + "Date"
+      ).textContent = day.date;
+
+      document.getElementById(
+        "day" + n + "PV"
+      ).textContent = "--";
+
+      document.getElementById(
+        "day" + n + "Rating"
+      ).textContent = "NO DATA";
+
+      return;
+    }
+
+
+    const x = day.summary;
+
+    document.getElementById(
+      "day" + n + "Date"
+    ).textContent = forecastDate(day.date);
+
+
+    document.getElementById(
+      "day" + n + "PV"
+    ).textContent =
+      Number(x.estimated_pv_kwh).toFixed(1);
+
+
+    document.getElementById(
+      "day" + n + "Rating"
+    ).textContent =
+      x.solar_rating + " SOLAR";
+
+
+    document.getElementById(
+      "day" + n + "Temp"
+    ).textContent =
+      Number(x.temperature_min).toFixed(1) +
+      "–" +
+      Number(x.temperature_max).toFixed(1) +
+      "°C";
+
+
+    document.getElementById(
+      "day" + n + "Cloud"
+    ).textContent =
+      Number(x.cloud_cover_daylight).toFixed(0) +
+      "%";
+
+
+    document.getElementById(
+      "day" + n + "Rain"
+    ).textContent =
+      Number(x.rain_total).toFixed(1) +
+      " mm";
+
+
+    document.getElementById(
+      "day" + n + "Radiation"
+    ).textContent =
+      Number(x.peak_radiation).toFixed(0) +
+      " W/m²";
+  });
+
+
+  const availableDays =
+    d.days.filter(x => x.available);
+
+
+  const labels =
+    availableDays.map(x =>
+      forecastDate(x.date)
+    );
+
+
+  const pv =
+    availableDays.map(x =>
+      x.summary.estimated_pv_kwh
+    );
+
+
+  const cloud =
+    availableDays.map(x =>
+      x.summary.cloud_cover_daylight
+    );
+
+
+  const chartData = {
+
+    labels:labels,
+
+    datasets:[
+
+      {
+        type:"bar",
+        label:"Estimated Solar kWh",
+        data:pv,
+        backgroundColor:"rgba(255,209,102,.65)",
+        borderColor:"#ffd166",
+        borderWidth:1,
+        yAxisID:"y"
+      },
+
+      {
+        type:"line",
+        label:"Daylight Cloud %",
+        data:cloud,
+        borderColor:"#8fa5bc",
+        backgroundColor:"#8fa5bc",
+        tension:.25,
+        pointRadius:5,
+        yAxisID:"y1"
+      }
+
+    ]
+  };
+
+
+  if(threeDayChart) {
+
+    threeDayChart.data = chartData;
+
+    threeDayChart.update();
+
+    return;
+  }
+
+
+  threeDayChart = new Chart(
+
+    document.getElementById("threeDayChart"),
+
+    {
+
+      data:chartData,
+
+      options:{
+
+        responsive:true,
+
+        maintainAspectRatio:false,
+
+        interaction:{
+          mode:"index",
+          intersect:false
+        },
+
+        scales:{
+
+          x:{
+            ticks:{
+              color:"#8fa5bc"
+            },
+
+            grid:{
+              color:"#16283a"
+            }
+          },
+
+
+          y:{
+            beginAtZero:true,
+
+            position:"left",
+
+            ticks:{
+              color:"#ffd166"
+            },
+
+            grid:{
+              color:"#16283a"
+            },
+
+            title:{
+              display:true,
+              text:"Estimated Solar kWh",
+              color:"#ffd166"
+            }
+          },
+
+
+          y1:{
+            beginAtZero:true,
+            max:100,
+            position:"right",
+
+            ticks:{
+              color:"#8fa5bc"
+            },
+
+            grid:{
+              drawOnChartArea:false
+            },
+
+            title:{
+              display:true,
+              text:"Cloud %",
+              color:"#8fa5bc"
+            }
+          }
+
+        },
+
+
+        plugins:{
+
+          legend:{
+            labels:{
+              color:"#edf5ff"
+            }
+          }
+
+        }
+
+      }
+
+    }
+
+  );
+
+}
+
+
+
+
+
+function svValue(value, suffix="", decimals=1) {
+  if(value === null || value === undefined) {
+    return "—";
+  }
+
+  const n = Number(value);
+
+  if(Number.isNaN(n)) {
+    return "—";
+  }
+
+  return n.toFixed(decimals) + suffix;
+}
+
+
+
+
+async function updateMLReadiness() {
+
+  try {
+
+    const r = await fetch("/api/ml-readiness");
+    const d = await r.json();
+
+    const ready = d.readiness || {};
+    const risk = d.risk || {};
+    const checks = ready.checks || {};
+
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if(el) el.textContent = value;
+    };
+
+    const gateText = check => {
+      if(!check) return "WAITING";
+      return check.pass ? "PASS" : "FAIL";
+    };
+
+    const gateColour = (id, check) => {
+      const el = document.getElementById(id);
+      if(!el) return;
+
+      if(!check) {
+        el.style.color = "var(--muted)";
+      }
+      else if(check.pass) {
+        el.style.color = "var(--green)";
+      }
+      else {
+        el.style.color = "#ff6b6b";
+      }
+    };
+
+
+    // Readiness progress
+    const days =
+      ready.validated_days ?? 0;
+
+    const minimum =
+      ready.minimum_days ?? 7;
+
+    setText(
+      "mlReadyStatus",
+      days + " / " + minimum
+    );
+
+
+    // Guardrails
+    const accuracy =
+      checks.accuracy_improvement;
+
+    const bias =
+      checks.bias;
+
+    const safety =
+      checks.safe_load_underprediction;
+
+    setText(
+      "mlAccuracyGate",
+      gateText(accuracy)
+    );
+
+    setText(
+      "mlBiasGate",
+      gateText(bias)
+    );
+
+    setText(
+      "mlSafetyGate",
+      gateText(safety)
+    );
+
+    gateColour(
+      "mlAccuracyGate",
+      accuracy
+    );
+
+    gateColour(
+      "mlBiasGate",
+      bias
+    );
+
+    gateColour(
+      "mlSafetyGate",
+      safety
+    );
+
+
+    // Safety reserve performance
+    if(
+      risk.reserve_success_rate_percent
+        === null ||
+      risk.reserve_success_rate_percent
+        === undefined
+    ) {
+      setText(
+        "mlReserveSuccess",
+        "—"
+      );
+    }
+    else {
+      setText(
+        "mlReserveSuccess",
+        Number(
+          risk.reserve_success_rate_percent
+        ).toFixed(1) + "%"
+      );
+    }
+
+
+    if(
+      risk.worst_safe_shortfall_kwh
+        === null ||
+      risk.worst_safe_shortfall_kwh
+        === undefined
+    ) {
+      setText(
+        "mlWorstSafe",
+        "—"
+      );
+    }
+    else {
+      setText(
+        "mlWorstSafe",
+        Number(
+          risk.worst_safe_shortfall_kwh
+        ).toFixed(2) + " kWh"
+      );
+    }
+
+
+    // Colour readiness
+    const readyEl =
+      document.getElementById(
+        "mlReadyStatus"
+      );
+
+    if(readyEl) {
+
+      if(ready.ready) {
+        readyEl.style.color =
+          "var(--green)";
+      }
+      else if(days >= minimum) {
+        readyEl.style.color =
+          "#ff6b6b";
+      }
+      else {
+        readyEl.style.color =
+          "#ffd166";
+      }
+
+    }
+
+  }
+  catch(err) {
+
+    console.error(
+      "ML readiness update failed:",
+      err
+    );
+
+  }
+
+}
+
+
+async function updateMLPerformance() {
+
+  try {
+
+    const r = await fetch("/api/ml-performance");
+    const d = await r.json();
+
+    const days =
+      document.getElementById("mlPerfDays");
+
+    const status =
+      document.getElementById("mlPerfStatus");
+
+    const note =
+      document.getElementById("mlPerfNote");
+
+    if(!days || !status) {
+      return;
+    }
+
+    days.textContent =
+      d.validated_days ?? 0;
+
+    if(!d.available) {
+
+      document.getElementById(
+        "mlPerfBaseline"
+      ).textContent = "—";
+
+      document.getElementById(
+        "mlPerfML"
+      ).textContent = "—";
+
+      document.getElementById(
+        "mlPerfSafe"
+      ).textContent = "—";
+
+      document.getElementById(
+        "mlPerfImprovement"
+      ).textContent = "—";
+
+      document.getElementById(
+        "mlPerfWins"
+      ).textContent = "—";
+
+      document.getElementById(
+        "mlPerfBias"
+      ).textContent = "—";
+
+      document.getElementById(
+        "mlPerfUnder"
+      ).textContent = "—";
+
+      status.textContent =
+        "WAITING FOR VALIDATED DAYS";
+
+      if(note) {
+        note.textContent =
+          d.reason ||
+          "Waiting for validated ML predictions.";
+      }
+
+      return;
+    }
+
+
+    const kwh = value =>
+      value == null
+        ? "—"
+        : Number(value).toFixed(2) + " kWh";
+
+    const pct = value =>
+      value == null
+        ? "—"
+        : Number(value).toFixed(1) + "%";
+
+
+    document.getElementById(
+      "mlPerfBaseline"
+    ).textContent =
+      kwh(d.baseline_mae_kwh);
+
+    document.getElementById(
+      "mlPerfML"
+    ).textContent =
+      kwh(d.ml_mae_kwh);
+
+    document.getElementById(
+      "mlPerfSafe"
+    ).textContent =
+      kwh(d.safe_ml_mae_kwh);
+
+    document.getElementById(
+      "mlPerfImprovement"
+    ).textContent =
+      pct(d.ml_improvement_percent);
+
+    document.getElementById(
+      "mlPerfWins"
+    ).textContent =
+      d.ml_wins + " / " +
+      d.validated_days;
+
+    document.getElementById(
+      "mlPerfBias"
+    ).textContent =
+      kwh(d.ml_bias_kwh);
+
+    document.getElementById(
+      "mlPerfUnder"
+    ).textContent =
+      d.ml_underprediction_days +
+      " / " +
+      d.validated_days;
+
+
+    if(d.validated_days < 7) {
+
+      status.textContent =
+        "COLLECTING DATA";
+
+      if(note) {
+        note.textContent =
+          "Need at least 7 genuine validated days " +
+          "before judging the ML model.";
+      }
+
+    }
+    else if(d.ml_improvement_percent > 0) {
+
+      status.textContent =
+        "ML OUTPERFORMING BASELINE";
+
+      if(note) {
+        note.textContent =
+          "ML is currently outperforming the " +
+          "baseline, but remains SHADOW ONLY.";
+      }
+
+    }
+    else {
+
+      status.textContent =
+        "BASELINE OUTPERFORMING ML";
+
+      if(note) {
+        note.textContent =
+          "Current validated results favour " +
+          "the baseline model.";
+      }
+
+    }
+
+  }
+  catch(err) {
+
+    console.error(
+      "ML performance update failed:",
+      err
+    );
+
+  }
+
+}
+
+
+async function updateStrategyValidation() {
+
+  try {
+
+    const r = await fetch(
+      "/api/strategy-validation?days=7"
+    );
+
+    const d = await r.json();
+
+    const body =
+      document.getElementById(
+        "strategyValidationBody"
+      );
+
+    if(!body) {
+      return;
+    }
+
+    body.innerHTML = "";
+
+    if(
+      !d.available ||
+      !d.comparison_rows ||
+      d.comparison_rows.length === 0
+    ) {
+
+      body.innerHTML = `
+        <tr>
+          <td colspan="22"
+              style="padding:18px;
+                     text-align:center;
+                     color:var(--muted)">
+            No Strategy Validation data available yet.
+          </td>
+        </tr>
+      `;
+
+      return;
+    }
+
+
+    const numberValue = (
+      value,
+      decimals = 1
+    ) => {
+
+      if(
+        value === null ||
+        value === undefined ||
+        value === ""
+      ) {
+        return "—";
+      }
+
+      const n = Number(value);
+
+      if(Number.isNaN(n)) {
+        return "—";
+      }
+
+      return n.toFixed(decimals);
+    };
+
+
+    const kwh = value => {
+
+      const x = numberValue(value, 1);
+
+      return x === "—"
+        ? "—"
+        : x + " kWh";
+    };
+
+
+    const percent = value => {
+
+      const x = numberValue(value, 1);
+
+      return x === "—"
+        ? "—"
+        : x + "%";
+    };
+
+
+    const money = value => {
+
+      if(
+        value === null ||
+        value === undefined ||
+        value === ""
+      ) {
+        return "—";
+      }
+
+      const n = Number(value);
+
+      if(Number.isNaN(n)) {
+        return "—";
+      }
+
+      const sign = n > 0 ? "+" : "";
+
+      return sign + "$" + n.toFixed(2);
+    };
+
+
+    d.comparison_rows.forEach(
+      (x, index) => {
+
+        const tr =
+          document.createElement("tr");
+
+        const isML =
+          x.type === "ML Prediction";
+
+        const isActual =
+          x.type === "Actual";
+
+        /*
+         * Each date has two rows.
+         * Put a stronger separator above
+         * the first row of each day.
+         */
+        tr.style.borderTop =
+          isML
+          ? "2px solid var(--border)"
+          : "1px solid var(--border)";
+
+
+        if(isML) {
+          tr.style.background =
+            "rgba(86,156,214,.05)";
+        }
+
+
+        const typeLabel =
+          isML
+          ? `<strong>ML Prediction</strong>`
+          : `<strong>Actual</strong>`;
+
+
+        let status = x.status || "—";
+
+        let statusStyle =
+          "color:var(--muted)";
+
+        if(status === "VALIDATED") {
+          statusStyle =
+            "color:var(--green);font-weight:700";
+        }
+        else if(status === "PENDING") {
+          statusStyle =
+            "color:#ffd166;font-weight:700";
+        }
+        else if(status === "PREDICTION") {
+          statusStyle =
+            "color:var(--muted)";
+        }
+
+
+        tr.innerHTML = `
+
+          <td style="padding:10px;
+                     white-space:nowrap">
+            ${forecastDate(x.date)}
+          </td>
+
+          <td style="padding:10px;
+                     white-space:nowrap">
+            ${typeLabel}
+          </td>
+
+          <td style="padding:10px">
+            ${kwh(x.solar_kwh)}
+          </td>
+
+          <td style="padding:10px">
+            ${
+              isML
+              ? kwh(x.baseline_load_kwh)
+              : "—"
+            }
+          </td>
+
+          <td style="padding:10px">
+            ${
+              isML
+              ? kwh(x.ml_load_kwh)
+              : "—"
+            }
+          </td>
+
+          <td style="padding:10px">
+            ${
+              isML
+              ? kwh(x.safe_ml_load_kwh)
+              : "—"
+            }
+          </td>
+
+          <td style="padding:10px">
+            ${
+              isActual
+              ? kwh(x.load_kwh)
+              : "—"
+            }
+          </td>
+
+          <td style="padding:10px">
+            ${percent(x.start_soc)}
+          </td>
+
+          <td style="padding:10px">
+            ${percent(x.pre_export_soc)}
+          </td>
+
+          <td style="padding:10px">
+            ${kwh(x.export_kwh)}
+          </td>
+
+          <td style="padding:10px">
+            ${percent(
+              x.export_battery_percent
+            )}
+          </td>
+
+          <td style="padding:10px">
+            ${percent(x.end_export_soc)}
+          </td>
+
+          <td style="padding:10px">
+            ${percent(x.next_solar_soc)}
+          </td>
+
+          <td style="padding:10px">
+            ${kwh(x.overnight_load_kwh)}
+          </td>
+
+          <td style="padding:10px">
+            ${kwh(x.battery_to_load_kwh)}
+          </td>
+
+          <td style="padding:10px">
+            ${kwh(x.grid_to_load_kwh)}
+          </td>
+
+          <td style="padding:10px">
+            ${kwh(x.grid_import_kwh)}
+          </td>
+
+          <td style="padding:10px">
+            ${percent(x.soc_cutoff)}
+          </td>
+
+          <td style="padding:10px">
+            ${
+              x.import_cost == null
+              ? "—"
+              : "$" +
+                Number(
+                  x.import_cost
+                ).toFixed(2)
+            }
+          </td>
+
+          <td style="padding:10px">
+            ${
+              x.export_revenue == null
+              ? "—"
+              : "$" +
+                Number(
+                  x.export_revenue
+                ).toFixed(2)
+            }
+          </td>
+
+          <td style="padding:10px;
+                     font-weight:700">
+            ${money(x.net_value)}
+          </td>
+
+          <td style="padding:10px;
+                     white-space:nowrap;
+                     ${statusStyle}">
+            ${status}
+          </td>
+
+        `;
+
+        body.appendChild(tr);
+
+      }
+    );
+
+  }
+  catch(err) {
+
+    console.error(
+      "Strategy validation update failed:",
+      err
+    );
+
+  }
+
+}
+
+
+async function updateExportPlan() {
+
+  const r = await fetch("/api/export-plan");
+  const d = await r.json();
+
+  if(!d.available || !d.plans) {
+    return;
+  }
+
+
+  const planBody =
+    document.getElementById("sevenDayPlanBody");
+
+  planBody.innerHTML = "";
+
+  d.plans.forEach(x => {
+
+    const tr = document.createElement("tr");
+
+    tr.style.borderTop =
+      "1px solid var(--border)";
+
+    const exportText =
+      x.export === "YES" ? "YES" : "NO";
+
+    tr.innerHTML = `
+      <td style="padding:10px">
+        ${forecastDate(x.date)}
+      </td>
+
+      <td style="padding:10px">
+        <strong>${Number(x.full_day_solar_kwh).toFixed(1)} kWh</strong>
+        <div class="small">
+          ${
+            x.strategy_frozen
+            ? "Remaining @ decision:"
+            : "Remaining:"
+          }
+          ${Number(x.remaining_solar_kwh).toFixed(1)} kWh
+          (${Number(x.remaining_solar_percent).toFixed(0)}%)
+        </div>
+      </td>
+
+      <td style="padding:10px">
+        ${x.solar_rating}
+      </td>
+
+      <td style="padding:10px;font-weight:bold">
+        ${exportText}
+
+        ${
+          x.strategy_frozen
+          ? `
+            <div style="
+              display:inline-block;
+              margin-left:6px;
+              padding:2px 6px;
+              border-radius:5px;
+              font-size:10px;
+              color:#7dd3fc;
+              background:rgba(125,211,252,.10);
+              border:1px solid rgba(125,211,252,.30);
+              white-space:nowrap">
+              FINAL · FROZEN
+            </div>
+          `
+          : ""
+        }
+      </td>
+
+      <td style="padding:10px">
+        <strong>${Number(x.recommended_export_percent).toFixed(1)}%</strong>
+        <div class="small">
+          ${Number(x.recommended_export_kwh).toFixed(1)} kWh
+        </div>
+      </td>
+
+      <td style="padding:10px">
+        ${Number(x.starting_soc).toFixed(1)}%
+        <div class="small">
+          ${Number(x.starting_soc_kwh).toFixed(1)} kWh
+        </div>
+      </td>
+
+      <td style="padding:10px">
+        ${
+          x.pre_export_soc == null
+          ? "—"
+          : Number(x.pre_export_soc).toFixed(1) + "%"
+        }
+        <div class="small">
+          ${
+            x.pre_export_kwh == null
+            ? ""
+            : Number(x.pre_export_kwh).toFixed(1) + " kWh"
+          }
+        </div>
+      </td>
+
+      <td style="padding:10px">
+        ${
+          x.midnight_soc == null
+          ? "—"
+          : Number(x.midnight_soc).toFixed(1) + "%"
+        }
+        <div class="small">
+          ${
+            x.midnight_kwh == null
+            ? ""
+            : Number(x.midnight_kwh).toFixed(1) + " kWh"
+          }
+        </div>
+      </td>
+
+      <td style="padding:10px">
+        ${
+          x.next_solar_start_soc == null
+          ? "—"
+          : Number(x.next_solar_start_soc).toFixed(1) + "%"
+        }
+        <div class="small">
+          ${
+            x.next_solar_start_kwh == null
+            ? ""
+            : Number(x.next_solar_start_kwh).toFixed(1) + " kWh"
+          }
+        </div>
+      </td>
+
+      <td style="padding:10px">
+        10.0%
+        <div class="small">4.2 kWh</div>
+      </td>
+
+      <td style="padding:10px">
+        $${Number(x.potential_revenue).toFixed(2)}
+      </td>
+    `;
+
+    planBody.appendChild(tr);
+
+  });
+
+
+
+  d.plans.slice(0,3).forEach((x,index) => {
+
+    const n = index + 1;
+
+    document.getElementById(
+      "exp" + n + "Date"
+    ).textContent =
+      forecastDate(x.date);
+
+
+    document.getElementById(
+      "exp" + n + "Decision"
+    ).textContent =
+      (x.export === "YES" ? "YES" : "NO") +
+      (x.strategy_frozen ? " · FINAL" : "");
+
+
+    document.getElementById(
+      "exp" + n + "Percent"
+    ).textContent =
+      Number(
+        x.recommended_export_percent
+      ).toFixed(1);
+
+
+    document.getElementById(
+      "exp" + n + "Kwh"
+    ).textContent =
+      Number(
+        x.recommended_export_kwh
+      ).toFixed(1);
+
+
+    document.getElementById(
+      "exp" + n + "Solar"
+    ).textContent =
+      Number(
+        x.solar_kwh
+      ).toFixed(1) +
+      " kWh · " +
+      x.solar_rating;
+
+
+    document.getElementById(
+      "exp" + n + "Start"
+    ).textContent =
+      Number(
+        x.starting_soc
+      ).toFixed(0) + "%";
+
+
+    document.getElementById(
+      "exp" + n + "Target"
+    ).textContent =
+      Number(
+        x.target_soc
+      ).toFixed(0) + "%";
+
+
+    document.getElementById(
+      "exp" + n + "Revenue"
+    ).textContent =
+      "$" +
+      Number(
+        x.potential_revenue
+      ).toFixed(2);
+
+
+    document.getElementById(
+      "exp" + n + "Reason"
+    ).textContent =
+      x.reason;
+
+  });
+
+
+  document.getElementById(
+    "planDailyLoad"
+  ).textContent =
+    Number(
+      d.predicted_daily_load_kwh
+    ).toFixed(1) +
+    " kWh";
+
+
+  document.getElementById(
+    "planTotalExport"
+  ).textContent =
+    Number(
+      d.total_recommended_export_kwh
+    ).toFixed(1) +
+    " kWh";
+
+
+  document.getElementById(
+    "planTotalRevenue"
+  ).textContent =
+    "$" +
+    Number(
+      d.total_potential_revenue
+    ).toFixed(2);
+
+}
+
+
+async function refresh() {
+  try {
+    await Promise.all([
+      updateStatus(),
+      updateToday(),
+      updateTomorrow(),
+      updateExportPlan(),
+      updateMLPerformance(),
+      updateMLReadiness(),
+      updateStrategyValidation(),
+      updateChart()
+    ]);
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+refresh();
+setInterval(refresh,30000);
+</script>
+
+</body>
+</html>

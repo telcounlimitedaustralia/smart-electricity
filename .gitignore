@@ -1,0 +1,32 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+config/*.env
+!config/*.env.example
+
+# Runtime state and generated artifacts
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+logs/
+data/*.db
+data/*.db-*
+data/foxess_schedule_backups/
+models/*.joblib
+backups/
+
+# Historical production copies: retain outside Git until reviewed and archived.
+*.before_*
+*.backup_*
+*.bak
+*.tmp
+*.bad_candidate_*
+
+# Editor and operating system files
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db

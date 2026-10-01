@@ -1,0 +1,1026 @@
+from flask import Flask, render_template, jsonify, request
+import sqlite3
+from pathlib import Path
+from datetime import datetime, timedelta
+import sys
+import time
+from threading import Lock
+
+BASE = Path.home() / "smart-electricity"
+DB = BASE / "data" / "energy.db"
+sys.path.insert(0, str(BASE / "src"))
+
+from tariff import rates_at
+from decision import make_decision
+from export_planner import calculate as calculate_export_plan
+from load_predictor import predict_day as predict_load_day
+from ml_risk_analysis import calculate as calculate_ml_risk
+from ml_readiness import calculate as calculate_ml_readiness
+from ml_daily_performance import calculate as calculate_ml_performance
+from economic_optimizer_v2 import (
+    build_hours as build_economic_hours,
+    initial_energy as economic_initial_energy,
+    optimise_horizon,
+    BATTERY_KWH as ECONOMIC_BATTERY_KWH,
+)
+
+app = Flask(__name__)
+
+# Joint horizon search is intentionally thorough.  Keep the dashboard's
+# 30-second refresh from rerunning the same 7-day optimisation every time.
+ECONOMIC_CACHE_SECONDS = 300
+economic_cache = {"created": 0.0, "payload": None}
+economic_cache_lock = Lock()
+
+
+def db():
+    c = sqlite3.connect(DB)
+    c.row_factory = sqlite3.Row
+    return c
+
+
+def latest():
+    c = db()
+    row = c.execute("""
+        SELECT *
+        FROM foxess_live
+        ORDER BY id DESC
+        LIMIT 1
+    """).fetchone()
+    c.close()
+    return dict(row) if row else None
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/api/status")
+def status():
+    x = latest()
+    if not x:
+        return jsonify({"error": "No FoxESS data"}), 404
+
+    now = datetime.now().astimezone()
+    tariff = rates_at(now)
+    decision = make_decision(x, tariff)
+
+    c = db()
+
+    weather = c.execute("""
+        SELECT *
+        FROM weather
+        ORDER BY ABS(
+            strftime('%s', timestamp) -
+            strftime('%s', ?)
+        )
+        LIMIT 1
+    """, (now.strftime("%Y-%m-%dT%H:%M"),)).fetchone()
+
+    counts = {}
+    for table in ["foxess_live", "weather", "ml_features"]:
+        try:
+            counts[table] = c.execute(
+                f"SELECT COUNT(*) FROM {table}"
+            ).fetchone()[0]
+        except:
+            counts[table] = 0
+
+    c.close()
+
+    soc = float(x.get("battery_soc") or 0)
+    battery_energy = 42.0 * soc / 100
+    energy_above_min = 42.0 * max(0, soc - 10) / 100
+
+    return jsonify({
+        "time": now.isoformat(timespec="seconds"),
+        "foxess": x,
+        "battery": {
+            "soc": soc,
+            "stored_kwh": round(battery_energy, 2),
+            "above_min_kwh": round(energy_above_min, 2),
+            "min_soc": 10
+        },
+        "tariff": tariff,
+        "decision": decision,
+        "weather": dict(weather) if weather else None,
+        "counts": counts
+    })
+
+
+@app.route("/api/history")
+def history():
+    c = db()
+
+    rows = c.execute("""
+        SELECT
+            timestamp,
+            pv_kw,
+            load_kw,
+            grid_import_kw,
+            grid_export_kw,
+            battery_soc,
+            battery_charge_kw,
+            battery_discharge_kw
+        FROM foxess_live
+        ORDER BY id DESC
+        LIMIT 288
+    """).fetchall()
+
+    c.close()
+
+    return jsonify([dict(x) for x in reversed(rows)])
+
+
+@app.route("/api/today")
+def today():
+    c = db()
+
+    today = datetime.now().astimezone().strftime("%Y-%m-%d")
+
+    rows = c.execute("""
+        SELECT *
+        FROM foxess_live
+        WHERE substr(timestamp,1,10) = ?
+        ORDER BY id
+    """, (today,)).fetchall()
+
+    c.close()
+
+    if len(rows) < 2:
+        return jsonify({
+            "samples": len(rows),
+            "pv_kwh": 0,
+            "load_kwh": 0,
+            "import_kwh": 0,
+            "export_kwh": 0
+        })
+
+    interval_hours = 5 / 60
+
+    return jsonify({
+        "samples": len(rows),
+        "pv_kwh": round(sum((r["pv_kw"] or 0) * interval_hours for r in rows), 2),
+        "load_kwh": round(sum((r["load_kw"] or 0) * interval_hours for r in rows), 2),
+        "import_kwh": round(sum((r["grid_import_kw"] or 0) * interval_hours for r in rows), 2),
+        "export_kwh": round(sum((r["grid_export_kw"] or 0) * interval_hours for r in rows), 2)
+    })
+
+
+@app.route("/api/tomorrow")
+def tomorrow():
+    from datetime import datetime, timedelta
+
+    now = datetime.now().astimezone()
+    c = db()
+
+    days = []
+
+    for offset in range(1, 8):
+        target = now + timedelta(days=offset)
+        target_date = target.strftime("%Y-%m-%d")
+
+        rows = c.execute("""
+            SELECT
+                timestamp,
+                temperature,
+                apparent_temperature,
+                cloud_cover,
+                precipitation,
+                shortwave_radiation,
+                sunshine_duration,
+                wind_speed
+            FROM weather
+            WHERE substr(timestamp,1,10) = ?
+            ORDER BY timestamp
+        """, (target_date,)).fetchall()
+
+        rows = [dict(r) for r in rows]
+
+        if not rows:
+            days.append({
+                "date": target_date,
+                "available": False
+            })
+            continue
+
+        temps = [float(r["temperature"] or 0) for r in rows]
+        rain = [float(r["precipitation"] or 0) for r in rows]
+        radiation = [float(r["shortwave_radiation"] or 0) for r in rows]
+
+        daylight = [
+            r for r in rows
+            if float(r["shortwave_radiation"] or 0) > 20
+        ]
+
+        avg_cloud = (
+            sum(float(r["cloud_cover"] or 0) for r in daylight)
+            / len(daylight)
+            if daylight else 0
+        )
+
+        irradiation = sum(radiation) / 1000.0
+
+        # Baseline estimate only - ML will replace this later.
+        pv_capacity_kw = 9.7
+        performance_factor = 0.78
+
+        estimated_pv = (
+            irradiation *
+            pv_capacity_kw *
+            performance_factor
+        )
+
+        if estimated_pv >= 30:
+            rating = "HIGH"
+        elif estimated_pv >= 18:
+            rating = "MODERATE"
+        else:
+            rating = "LOW"
+
+        days.append({
+            "available": True,
+            "date": target_date,
+
+            "summary": {
+                "temperature_min": round(min(temps),1),
+                "temperature_max": round(max(temps),1),
+                "cloud_cover_daylight": round(avg_cloud,0),
+                "rain_total": round(sum(rain),1),
+                "peak_radiation": round(max(radiation),0),
+                "solar_irradiation_kwh_m2": round(irradiation,2),
+                "estimated_pv_kwh": round(estimated_pv,1),
+                "solar_rating": rating
+            },
+
+            "hourly": rows
+        })
+
+    c.close()
+
+    return jsonify({
+        "available": any(x.get("available") for x in days),
+        "days": days
+    })
+
+
+@app.route("/api/export-plan")
+def export_plan():
+    """
+    Before 16:55:
+        Today's export strategy is live.
+
+    From 16:55 onward:
+        Today's executable strategy is frozen from
+        strategy_validation.
+
+    Future-day plans remain live.
+    """
+
+    plan = calculate_export_plan()
+
+    if not plan.get("available"):
+        return jsonify(plan)
+
+    now = datetime.now().astimezone()
+    today = now.date().isoformat()
+
+    # Final daily strategy becomes immutable at 16:55.
+    freeze_time = now.replace(
+        hour=16,
+        minute=55,
+        second=0,
+        microsecond=0
+    )
+
+    if now >= freeze_time:
+
+        c = db()
+
+        frozen = c.execute("""
+            SELECT *
+            FROM strategy_validation
+            WHERE plan_date = ?
+            ORDER BY snapshot_timestamp DESC
+            LIMIT 1
+        """, (today,)).fetchone()
+
+        c.close()
+
+        if frozen:
+
+            frozen = dict(frozen)
+
+            for x in plan.get("plans", []):
+
+                if x.get("date") != today:
+                    continue
+
+                # Freeze the values that formed the
+                # executable daily strategy.
+                x["full_day_solar_kwh"] = (
+                    frozen["forecast_solar_kwh"]
+                )
+
+                x["remaining_solar_kwh"] = (
+                    frozen["forecast_remaining_solar_kwh"]
+                )
+
+                full_solar = (
+                    frozen["forecast_solar_kwh"] or 0
+                )
+
+                remaining_solar = (
+                    frozen["forecast_remaining_solar_kwh"]
+                    or 0
+                )
+
+                x["remaining_solar_percent"] = (
+                    round(
+                        remaining_solar /
+                        full_solar *
+                        100.0,
+                        1
+                    )
+                    if full_solar > 0
+                    else 0.0
+                )
+
+                x["starting_soc"] = (
+                    frozen["predicted_start_soc"]
+                )
+
+                if frozen["predicted_start_soc"] is not None:
+                    x["starting_soc_kwh"] = round(
+                        frozen["predicted_start_soc"] /
+                        100.0 *
+                        42.0,
+                        1
+                    )
+
+                x["pre_export_soc"] = (
+                    frozen["predicted_pre_export_soc"]
+                )
+
+                x["midnight_soc"] = (
+                    frozen["predicted_midnight_soc"]
+                )
+
+                x["next_solar_start_soc"] = (
+                    frozen["predicted_next_solar_soc"]
+                )
+
+                x["recommended_export_percent"] = (
+                    frozen["recommended_export_percent"]
+                )
+
+                x["recommended_export_kwh"] = (
+                    frozen["recommended_export_kwh"]
+                )
+
+                export_kwh = (
+                    frozen["recommended_export_kwh"]
+                    or 0
+                )
+
+                x["export"] = (
+                    "YES"
+                    if export_kwh >= 0.5
+                    else "NO"
+                )
+
+                x["predicted_load_kwh"] = (
+                    frozen["forecast_load_kwh"]
+                )
+
+                # Keep all dashboard values consistent with
+                # the frozen executable strategy.
+
+                # Full-day solar rating.
+                frozen_solar = (
+                    frozen["forecast_solar_kwh"] or 0
+                )
+
+                x["solar_kwh"] = frozen_solar
+
+                x["solar_rating"] = (
+                    "HIGH"
+                    if frozen_solar >= 30
+                    else "MODERATE"
+                    if frozen_solar >= 18
+                    else "LOW"
+                )
+
+                # Target SOC shown on the summary card should
+                # come from the frozen strategy, not a later
+                # live recalculation.
+                x["target_soc"] = (
+                    frozen["predicted_midnight_soc"]
+                )
+
+                # Frozen premium export revenue.
+                # Export tariff = 28 c/kWh.
+                x["potential_revenue"] = round(
+                    export_kwh * 28.0 / 100.0,
+                    2
+                )
+
+                x["reason"] = (
+                    "Final daily strategy frozen at "
+                    "16:55 for the 17:05 FoxESS "
+                    "execution window."
+                )
+
+                x["strategy_frozen"] = True
+                x["strategy_snapshot_timestamp"] = (
+                    frozen["snapshot_timestamp"]
+                )
+
+                break
+
+    return jsonify(plan)
+
+
+@app.route("/api/strategy-validation")
+def strategy_validation():
+
+    # Default dashboard window = last 7 validation days.
+    # 14/30 day support is already available for the UI later.
+    try:
+        days = int(request.args.get("days", 7))
+    except (TypeError, ValueError):
+        days = 7
+
+    days = max(1, min(days, 30))
+
+    conn = sqlite3.connect("data/energy.db")
+    conn.row_factory = sqlite3.Row
+
+    rows = conn.execute("""
+        SELECT *
+        FROM strategy_validation
+        ORDER BY plan_date DESC
+        LIMIT ?
+    """, (days,)).fetchall()
+
+    conn.close()
+
+    records = [dict(r) for r in rows]
+
+    if not records:
+        return jsonify({
+            "available": False,
+            "mode": "SHADOW",
+            "days": days,
+            "latest": None,
+            "records": [],
+            "comparison_rows": []
+        })
+
+    comparison_rows = []
+
+    for x in records:
+
+        # ML prediction / recommendation
+        ml = {
+            "date": x["plan_date"],
+            "type": "ML Prediction",
+
+            "solar_kwh": x["forecast_solar_kwh"],
+
+            # Load forecasts kept separately for validation.
+            "load_kwh": x["ml_load_forecast_kwh"],
+            "baseline_load_kwh": x["forecast_load_kwh"],
+            "ml_load_kwh": x["ml_load_forecast_kwh"],
+            "safe_ml_load_kwh": x["ml_safe_load_kwh"],
+            "ml_load_model": x["ml_load_model"],
+
+            "start_soc": x["predicted_start_soc"],
+            "pre_export_soc": x["predicted_pre_export_soc"],
+
+            "export_kwh": x["recommended_export_kwh"],
+            "export_battery_percent":
+                x["recommended_export_percent"],
+
+            "end_export_soc":
+                x["predicted_end_export_soc"],
+
+            "next_solar_soc":
+                x["predicted_next_solar_soc"],
+
+            "overnight_load_kwh":
+                x["predicted_overnight_load_kwh"],
+
+            "battery_to_load_kwh":
+                x["predicted_battery_to_load_kwh"],
+
+            "grid_to_load_kwh":
+                x["predicted_grid_to_load_kwh"],
+
+            "grid_import_kwh":
+                x["predicted_grid_import_kwh"],
+
+            "soc_cutoff":
+                x["predicted_end_export_soc"],
+
+            "import_cost":
+                x["predicted_import_cost"],
+
+            "export_revenue":
+                x["predicted_export_revenue"],
+
+            "net_value":
+                x["predicted_net_value"],
+
+            "status": "PREDICTION"
+        }
+
+        # Actual FoxESS result
+        actual = {
+            "date": x["plan_date"],
+            "type": "Actual",
+
+            "solar_kwh": x["actual_solar_kwh"],
+            "load_kwh": x["actual_load_kwh"],
+
+            "baseline_load_kwh": None,
+            "ml_load_kwh": None,
+            "safe_ml_load_kwh": None,
+            "ml_load_model": None,
+
+            "start_soc": x["actual_start_soc"],
+            "pre_export_soc": x["actual_pre_export_soc"],
+
+            "export_kwh": x["actual_grid_export_kwh"],
+            "export_battery_percent":
+                x["actual_export_percent"],
+
+            "end_export_soc":
+                x["actual_end_export_soc"],
+
+            "next_solar_soc":
+                x["actual_next_solar_soc"],
+
+            "overnight_load_kwh":
+                x["actual_overnight_load_kwh"],
+
+            "battery_to_load_kwh":
+                x["actual_battery_to_load_kwh"],
+
+            "grid_to_load_kwh":
+                x["actual_grid_to_load_kwh"],
+
+            "grid_import_kwh":
+                x["actual_grid_import_kwh"],
+
+            "soc_cutoff":
+                x["foxess_cutoff_soc"],
+
+            "import_cost":
+                x["actual_import_cost"],
+
+            "export_revenue":
+                x["actual_export_revenue"],
+
+            "net_value":
+                x["actual_net_value"],
+
+            "status": x["status"]
+        }
+
+        comparison_rows.append(ml)
+        comparison_rows.append(actual)
+
+    return jsonify({
+        "available": True,
+        "mode": "SHADOW",
+        "days": days,
+
+        # Retained for existing dashboard cards.
+        "latest": records[0],
+        "records": records,
+
+        # New 7-day comparison table.
+        "comparison_rows": comparison_rows
+    })
+
+
+
+@app.route("/api/ml-readiness")
+def ml_readiness():
+    try:
+        return jsonify({
+            "readiness": calculate_ml_readiness(),
+            "risk": calculate_ml_risk()
+        })
+    except Exception as e:
+        return jsonify({
+            "readiness": {
+                "ready": False,
+                "status": "ERROR",
+                "error": str(e)
+            },
+            "risk": {
+                "available": False,
+                "error": str(e)
+            }
+        }), 500
+
+
+@app.route("/api/ml-performance")
+def ml_performance():
+    try:
+        return jsonify(calculate_ml_performance())
+    except Exception as e:
+        return jsonify({
+            "available": False,
+            "status": "ERROR",
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/load-ml-shadow")
+def load_ml_shadow():
+    try:
+        return jsonify(predict_load_day())
+    except Exception as e:
+        return jsonify({
+            "available": False,
+            "status": "ERROR",
+            "error": str(e)
+        }), 500
+
+
+
+@app.route("/api/economic-optimizer")
+def economic_optimizer():
+    """
+    Economic Optimiser V2 dashboard API.
+
+    The endpoint itself is read-only. The separately scheduled guarded
+    executor applies frozen actions and verifies FoxESS read-back.
+    """
+    try:
+        cached = economic_cache.get("payload")
+        cache_age = time.monotonic() - economic_cache.get("created", 0.0)
+        if cached is not None and cache_age < ECONOMIC_CACHE_SECONDS:
+            return jsonify(cached)
+
+        # Only one request may run the expensive joint search. Requests that
+        # arrive during the first calculation wait here, then reuse its cache.
+        economic_cache_lock.acquire()
+        cached = economic_cache.get("payload")
+        cache_age = time.monotonic() - economic_cache.get("created", 0.0)
+        if cached is not None and cache_age < ECONOMIC_CACHE_SECONDS:
+            economic_cache_lock.release()
+            return jsonify(cached)
+
+        hours, ml = build_economic_hours()
+
+        if not hours:
+            economic_cache_lock.release()
+            return jsonify({
+                "available": False,
+                "mode": "SHADOW",
+                "error": "No joined forecast hours available"
+            })
+
+        start_energy, start_soc = (
+            economic_initial_energy()
+        )
+
+        result = optimise_horizon(
+            hours,
+            start_energy,
+            max_passes=2,
+        )
+
+        final = result["final_result"]
+        baseline = result["baseline_result"]
+
+        today_string = datetime.now().date().isoformat()
+        actual_today_conn = db()
+        actual_today_solar = actual_today_conn.execute("""
+            SELECT COALESCE(SUM(pv_kw) / 12.0, 0)
+            FROM foxess_live
+            WHERE substr(timestamp, 1, 10) = ?
+        """, (today_string,)).fetchone()[0]
+        automation_table = actual_today_conn.execute("""
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type = 'table' AND name = 'automation_events'
+        """).fetchone()[0]
+        latest_automation = None
+        if automation_table:
+            event = actual_today_conn.execute("""
+                SELECT event_time, phase, status, detail
+                FROM automation_events
+                WHERE plan_date = ?
+                ORDER BY event_time DESC LIMIT 1
+            """, (today_string,)).fetchone()
+            if event:
+                latest_automation = dict(event)
+        actual_today_conn.close()
+
+        days = []
+
+        for day_index, day in enumerate(result["days"]):
+            d = final["daily"][day]
+            b = baseline["daily"][day]
+            ml_day = ml.get(day, {})
+
+            charge_kwh = float(result["charges"].get(day, 0))
+            export_kwh = float(result["exports"].get(day, 0))
+            next_solar = None
+            if day_index + 1 < len(result["days"]):
+                next_day = result["days"][day_index + 1]
+                next_solar = final["daily"][next_day].get("solar", 0)
+
+            if charge_kwh > 0 and export_kwh > 0:
+                action_reason = (
+                    "Buy cheap energy, export the profitable surplus, and "
+                    "retain the remainder for later load and reserve."
+                )
+            elif charge_kwh > 0:
+                action_reason = (
+                    "Buy cheap energy to avoid higher-cost later imports and "
+                    "protect the forecast reserve."
+                )
+            elif export_kwh > 0:
+                action_reason = (
+                    "Forecast surplus supports premium export after load, "
+                    "losses, and reserve protection."
+                )
+            elif next_solar is not None and next_solar >= 35:
+                action_reason = (
+                    "Retain energy overnight; stronger solar is forecast "
+                    "tomorrow, so no grid charge or forced export adds value."
+                )
+            else:
+                action_reason = (
+                    "Retain energy for household load and forecast safety; "
+                    "no safe charge/export pair improves whole-horizon value."
+                )
+
+            pre_export = d.get(
+                "pre_export_energy"
+            )
+
+            end_energy = d.get(
+                "end_energy"
+            )
+
+            days.append({
+                "date": day,
+
+                "automation_status": (
+                    latest_automation["status"] + " · " +
+                    latest_automation["phase"].upper()
+                    if day == today_string and latest_automation
+                    else (
+                        "ENABLED · NEXT RUN"
+                        if day == today_string
+                        else "SCHEDULED"
+                    )
+                ),
+
+                "solar_kwh":
+                    round(
+                        d.get("solar", 0)
+                        + (
+                            float(actual_today_solar)
+                            if day == today_string
+                            else 0.0
+                        ),
+                        2
+                    ),
+
+                "solar_basis": (
+                    "ACTUAL_SO_FAR_PLUS_REMAINING_FORECAST"
+                    if day == today_string
+                    else "FULL_DAY_FORECAST"
+                ),
+
+                "ml_load_kwh":
+                    ml_day.get("predicted_load_kwh"),
+
+                "safe_ml_load_kwh":
+                    ml_day.get("safe_load_kwh"),
+
+                "recommended_charge_kwh":
+                    round(
+                        charge_kwh,
+                        2
+                    ),
+
+                "actual_simulated_charge_kwh":
+                    round(
+                        d.get("grid_charge", 0),
+                        2
+                    ),
+
+                "recommended_export_kwh":
+                    round(
+                        export_kwh,
+                        2
+                    ),
+
+                "simulated_premium_export_kwh":
+                    round(
+                        d.get(
+                            "premium_export", 0
+                        ),
+                        2
+                    ),
+
+                "natural_export_kwh":
+                    round(
+                        d.get(
+                            "natural_export", 0
+                        ),
+                        2
+                    ),
+
+                "soc_5pm":
+                    None
+                    if pre_export is None
+                    else round(
+                        pre_export
+                        / ECONOMIC_BATTERY_KWH
+                        * 100,
+                        1
+                    ),
+
+                "end_soc":
+                    None
+                    if end_energy is None
+                    else round(
+                        end_energy
+                        / ECONOMIC_BATTERY_KWH
+                        * 100,
+                        1
+                    ),
+
+                "pre_10am_import_kwh":
+                    round(
+                        d.get(
+                            "pre_10am_grid_import",
+                            0
+                        ),
+                        3
+                    ),
+
+                "grid_import_kwh":
+                    round(
+                        d.get("grid_import", 0),
+                        2
+                    ),
+
+                "import_cost":
+                    round(
+                        d.get("import_cost", 0),
+                        2
+                    ),
+
+                "export_revenue":
+                    round(
+                        d.get(
+                            "export_revenue", 0
+                        ),
+                        2
+                    ),
+
+                "net_value":
+                    round(
+                        d.get("export_revenue", 0)
+                        - d.get("import_cost", 0),
+                        2
+                    ),
+
+                "baseline_end_soc":
+                    round(
+                        b.get("end_energy", 0)
+                        / ECONOMIC_BATTERY_KWH
+                        * 100,
+                        1
+                    ),
+
+                "baseline_export_kwh":
+                    round(
+                        result["baseline_exports"].get(day, 0),
+                        2
+                    ),
+
+                "reason": action_reason,
+            })
+
+        baseline_value = float(
+            result["baseline_score"]
+        )
+
+        optimised_value = float(
+            result["final_score"]
+        )
+
+        payload = {
+            "available": True,
+            "mode": "JOINT_SHADOW_RULE_EXPORT_LIVE",
+            "control_enabled": False,
+            "telegram_notifications": True,
+            "automation": {
+                "control_strategy": "RULE_BASED",
+                "cheap_charge_enabled": False,
+                "premium_export_enabled": True,
+                "charge_run": None,
+                "snapshot_run": "16:55",
+                "export_run": "17:00",
+                "latest_event": latest_automation,
+            },
+
+            "tariffs": {
+                "shoulder_buy_cents": 11.11,
+                "premium_fit_cents": 28.0,
+                "shoulder_window": "10:00-14:00",
+                "premium_export_window": "17:00-21:00"
+            },
+
+            "starting_soc":
+                round(start_soc, 1),
+
+            "baseline_value":
+                round(baseline_value, 2),
+
+            "baseline_type":
+                result.get(
+                    "baseline_type",
+                    "SAFE_EXPORT_ONLY"
+                ),
+
+            "baseline_label":
+                "Safe export-only planner",
+
+            "optimised_value":
+                round(optimised_value, 2),
+
+            "projected_improvement":
+                round(
+                    optimised_value
+                    - baseline_value,
+                    2
+                ),
+
+            "total_grid_charge_kwh":
+                round(
+                    final.get(
+                        "grid_charge", 0
+                    ),
+                    2
+                ),
+
+            "total_grid_import_kwh":
+                round(
+                    final.get(
+                        "grid_import", 0
+                    ),
+                    2
+                ),
+
+            "total_grid_export_kwh":
+                round(
+                    final.get(
+                        "grid_export", 0
+                    ),
+                    2
+                ),
+
+            "total_premium_export_kwh":
+                round(
+                    sum(
+                        d.get("premium_export", 0)
+                        for d in final["daily"].values()
+                    ),
+                    2
+                ),
+
+            "days": days,
+            "cache_seconds": ECONOMIC_CACHE_SECONDS,
+        }
+
+        economic_cache["created"] = time.monotonic()
+        economic_cache["payload"] = payload
+        economic_cache_lock.release()
+        return jsonify(payload)
+
+    except Exception as e:
+        if economic_cache_lock.locked():
+            economic_cache_lock.release()
+        return jsonify({
+            "available": False,
+            "mode": "LIVE_GUARDED",
+            "control_enabled": True,
+            "error": str(e)
+        }), 500
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=8080)
