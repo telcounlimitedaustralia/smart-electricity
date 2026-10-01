@@ -34,7 +34,12 @@ async function load() {
 
 async function identityReady() {
   const login = document.querySelector("#login");
-  if (location.protocol === "file:") { showLocalPreview(); return; }
+  if (location.protocol === "file:") {
+    showLocalPreview();
+    document.querySelector("#refresh").disabled = true;
+    document.querySelector("#refresh").title = "Live data is available after Netlify deployment.";
+    return;
+  }
   let config;
   try { config = await fetch("/.netlify/functions/live-data?view=config").then(r => r.json()); } catch (_) { config = { accessMode: "production" }; }
   if (config.accessMode === "tester") {
