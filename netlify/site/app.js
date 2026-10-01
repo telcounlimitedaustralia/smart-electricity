@@ -7,6 +7,15 @@ const api = (view) => fetch(`/.netlify/functions/live-data?view=${encodeURICompo
 const kwh = value => value == null ? "—" : `${Number(value).toFixed(1)} kWh`;
 const pct = value => value == null ? "—" : `${Number(value).toFixed(0)}%`;
 
+function showLocalPreview() {
+  document.querySelector("#updated").textContent = "Local layout preview — live data loads after Netlify deployment.";
+  document.querySelector("#access").textContent = "Local preview";
+  document.querySelector("#current").innerHTML = ["Solar now", "Home now", "Battery", "Today’s solar", "Today’s home use", "Grid import"]
+    .map(label => `<article><span>${label}</span><strong>—</strong></article>`).join("");
+  document.querySelector("#decision").textContent = "This local preview has no connection to your live energy data.";
+  document.querySelector("#plan").innerHTML = `<tr><td colspan="8">Live seven-day data will appear here after the protected Netlify site is deployed.</td></tr>`;
+}
+
 async function load() {
   document.querySelector("#message").textContent = "";
   try {
@@ -25,6 +34,7 @@ async function load() {
 
 async function identityReady() {
   const login = document.querySelector("#login");
+  if (location.protocol === "file:") { showLocalPreview(); return; }
   let config;
   try { config = await fetch("/.netlify/functions/live-data?view=config").then(r => r.json()); } catch (_) { config = { accessMode: "production" }; }
   if (config.accessMode === "tester") {
