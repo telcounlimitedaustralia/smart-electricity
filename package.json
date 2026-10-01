@@ -2,7 +2,5 @@
   "name": "smart-electricity-private-dashboard",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "@netlify/identity": "^1.0.0"
-  }
+  "dependencies": {}
 }

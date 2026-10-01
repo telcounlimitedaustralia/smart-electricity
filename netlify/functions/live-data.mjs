@@ -1,5 +1,3 @@
-import { getUser } from "@netlify/identity";
-
 const ALLOWED_VIEWS = new Set([
   "status",
   "today",
@@ -25,14 +23,6 @@ function basicAuth(username, password) {
   return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
 
-async function requireIdentity() {
-  // Netlify validates the authenticated session server-side. This protects
-  // the read-only gateway even though its static shell is publicly reachable.
-  const user = await getUser();
-  if (!user) throw new Error("Sign in with Google is required.");
-  return user;
-}
-
 export default async (request) => {
   if (request.method !== "GET") return json(405, { error: "Read-only endpoint" });
 
@@ -45,8 +35,6 @@ export default async (request) => {
   if (!ALLOWED_VIEWS.has(view)) return json(404, { error: "Unknown read-only view" });
 
   try {
-    await requireIdentity();
-
     const baseUrl = process.env.VM_DASHBOARD_BASE_URL;
     const username = process.env.VM_DASHBOARD_USERNAME;
     const password = process.env.VM_DASHBOARD_PASSWORD;
@@ -69,7 +57,6 @@ export default async (request) => {
       },
     });
   } catch (error) {
-    const isAuthError = /sign in|required|Identity verification/i.test(error.message);
-    return json(isAuthError ? 401 : 502, { error: isAuthError ? error.message : "Live data is temporarily unavailable" });
+    return json(502, { error: "Live data is temporarily unavailable" });
   }
 };
