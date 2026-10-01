@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "jose": "^6.1.0"
+    "@netlify/identity": "^1.0.0"
   }
 }

@@ -1,3 +1,5 @@
+import { getUser } from "@netlify/identity";
+
 const ALLOWED_VIEWS = new Set([
   "status",
   "today",
@@ -23,23 +25,12 @@ function basicAuth(username, password) {
   return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
 
-async function requireIdentity(request) {
-  // The tester deployment is protected by Netlify Password Protection at the
-  // edge. The production deployment has an explicit Identity JWT requirement.
-  if (process.env.SITE_ACCESS_MODE === "tester") return null;
-
-  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (!token) throw new Error("Sign in is required.");
-
-  const jwksUrl = process.env.NETLIFY_IDENTITY_JWKS_URL;
-  if (!jwksUrl) throw new Error("Identity verification is not configured.");
-
-  const { createRemoteJWKSet, jwtVerify } = await import("jose");
-  const result = await jwtVerify(token, createRemoteJWKSet(new URL(jwksUrl)), {
-    issuer: process.env.NETLIFY_IDENTITY_ISSUER,
-    audience: process.env.NETLIFY_IDENTITY_AUDIENCE,
-  });
-  return result.payload;
+async function requireIdentity() {
+  // Netlify validates the authenticated session server-side. This protects
+  // the read-only gateway even though its static shell is publicly reachable.
+  const user = await getUser();
+  if (!user) throw new Error("Sign in with Google is required.");
+  return user;
 }
 
 export default async (request) => {
@@ -54,7 +45,7 @@ export default async (request) => {
   if (!ALLOWED_VIEWS.has(view)) return json(404, { error: "Unknown read-only view" });
 
   try {
-    await requireIdentity(request);
+    await requireIdentity();
 
     const baseUrl = process.env.VM_DASHBOARD_BASE_URL;
     const username = process.env.VM_DASHBOARD_USERNAME;

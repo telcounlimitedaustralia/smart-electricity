@@ -1,8 +1,7 @@
-const api = (view) => fetch(`/.netlify/functions/live-data?view=${encodeURIComponent(view)}`, {
-  headers: window.netlifyIdentity?.currentUser()?.token?.access_token
-    ? { Authorization: `Bearer ${window.netlifyIdentity.currentUser().token.access_token}` }
-    : {},
-}).then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data.error || "Unable to load live data"); return data; });
+import { getUser, handleAuthCallback, oauthLogin } from "https://esm.sh/@netlify/identity@1";
+
+const api = (view) => fetch(`/.netlify/functions/live-data?view=${encodeURIComponent(view)}`)
+  .then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data.error || "Unable to load live data"); return data; });
 
 const kwh = value => value == null ? "—" : `${Number(value).toFixed(1)} kWh`;
 const pct = value => value == null ? "—" : `${Number(value).toFixed(0)}%`;
@@ -47,11 +46,12 @@ async function identityReady() {
     load();
     return;
   }
-  if (!window.netlifyIdentity) { document.querySelector("#message").textContent = "Google sign-in is not configured yet."; return; }
-  window.netlifyIdentity.on("init", user => { login.hidden = Boolean(user); document.querySelector("#access").textContent = user ? user.email : "Google sign-in required"; if (user) load(); });
-  window.netlifyIdentity.on("login", () => { window.netlifyIdentity.close(); load(); });
-  window.netlifyIdentity.init();
-  login.onclick = () => window.netlifyIdentity.open();
+  await handleAuthCallback();
+  const user = await getUser();
+  login.hidden = Boolean(user);
+  document.querySelector("#access").textContent = user ? user.email : "Google sign-in required";
+  if (user) load();
+  login.onclick = () => oauthLogin("google");
 }
 
 document.querySelector("#refresh").onclick = load;
