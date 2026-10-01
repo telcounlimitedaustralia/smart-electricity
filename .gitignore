@@ -25,7 +25,6 @@ backups/
 *.bad_candidate_*
 
 # Editor and operating system files
-.vscode/
 .idea/
 *.code-workspace
 .DS_Store
