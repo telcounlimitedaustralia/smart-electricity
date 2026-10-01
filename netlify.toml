@@ -1,0 +1,14 @@
+[build]
+  publish = "netlify/site"
+  functions = "netlify/functions"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "same-origin"
+    Cache-Control = "no-store"
+
+# Deployment configuration, secrets, Netlify Password Protection, and Google
+# Identity are deliberately configured in the Netlify UI -- never in Git.

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Smart Electricity — Read-only</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script defer src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+    <script defer src="/app.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div><p class="eyebrow">LIVE · READ-ONLY</p><h1>⚡ Smart Electricity</h1><p id="updated">Connecting to live data…</p></div>
+        <div class="actions"><span id="access">Protected</span><button id="login" hidden>Sign in with Google</button><button id="refresh">Refresh</button></div>
+      </header>
+      <p id="message" role="status"></p>
+      <section class="cards" aria-label="Current status" id="current"></section>
+      <section class="panel"><h2>Decision today</h2><div id="decision">Loading…</div></section>
+      <section class="panel"><h2>Seven-day plan</h2><div class="scroll"><table><thead><tr><th>Date</th><th>Solar</th><th>Home use</th><th>Cheap charge</th><th>Premium export</th><th>5 PM → end SOC</th><th>Imports</th><th>Value</th></tr></thead><tbody id="plan"></tbody></table></div></section>
+      <footer>Read-only view. No FoxESS controls or automation settings are available here.</footer>
+    </main>
+  </body>
+</html>
