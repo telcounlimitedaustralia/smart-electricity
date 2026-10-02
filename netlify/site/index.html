@@ -10,14 +10,94 @@
   <body>
     <main>
       <header>
-        <div><p class="eyebrow">LIVE · READ-ONLY</p><h1>⚡ Smart Electricity</h1><p id="updated">Connecting to live data…</p></div>
-        <div class="actions"><span id="access">Public · read-only</span><button id="refresh">Refresh</button></div>
+        <div>
+          <p class="eyebrow">LIVE · READ-ONLY</p>
+          <h1><span aria-hidden="true">⚡</span> Smart Electricity</h1>
+          <p id="updated">Connecting to live data…</p>
+        </div>
+        <div class="actions">
+          <span id="access">Public · read-only</span>
+          <button id="refresh">Refresh</button>
+        </div>
       </header>
+
       <p id="message" role="status"></p>
-      <section class="cards" aria-label="Current status" id="current"></section>
-      <section class="panel"><h2>Decision today</h2><div id="decision">Loading…</div></section>
-      <section class="panel"><h2>Seven-day plan</h2><div class="scroll"><table><thead><tr><th>Date</th><th>Solar</th><th>Home use</th><th>Cheap charge</th><th>Premium export</th><th>5 PM → end SOC</th><th>Imports</th><th>Value</th></tr></thead><tbody id="plan"></tbody></table></div></section>
-      <footer>Read-only view. No FoxESS controls or automation settings are available here.</footer>
+
+      <section aria-labelledby="current-heading">
+        <div class="section-heading">
+          <div><p class="eyebrow">RIGHT NOW</p><h2 id="current-heading">Current energy status</h2></div>
+        </div>
+        <div class="cards" id="current"></div>
+      </section>
+
+      <section class="panel decision-panel" aria-labelledby="decision-heading">
+        <div class="section-heading">
+          <div><p class="eyebrow">TODAY</p><h2 id="decision-heading">Forecast and decision</h2></div>
+          <span class="status-pill">Shadow analysis only</span>
+        </div>
+        <div id="decision">Loading…</div>
+      </section>
+
+      <section class="summary-grid" id="economics" aria-label="Seven-day economics"></section>
+
+      <section class="panel plan-panel" aria-labelledby="plan-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">JOINT ECONOMIC OPTIMISER</p>
+            <h2 id="plan-heading">Complete seven-day plan</h2>
+            <p class="subtext">One comparable view of forecast, battery actions, losses, imports and value.</p>
+          </div>
+          <span class="status-pill rule-pill">Rule-based automation remains live</span>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr class="group-row">
+                <th rowspan="2">Date</th>
+                <th colspan="3">Forecast</th>
+                <th colspan="2">Starting point</th>
+                <th colspan="6">Joint shadow plan</th>
+                <th colspan="6">Economics</th>
+                <th rowspan="2">Why this decision</th>
+              </tr>
+              <tr>
+                <th>Solar<br><small>gross PV</small></th>
+                <th>Expected home use<br><small>ML point</small></th>
+                <th>Protected home use<br><small>planning case</small></th>
+                <th>Battery at start</th>
+                <th>Export without<br>cheap charging</th>
+                <th>Cheap energy bought<br><small>grid AC</small></th>
+                <th>Added to battery<br><small>after loss</small></th>
+                <th>Battery at 5 PM</th>
+                <th>Premium export<br><small>meter AC</small></th>
+                <th>Battery used<br>for export</th>
+                <th>Battery at midnight</th>
+                <th>Total imports</th>
+                <th>Energy cost</th>
+                <th>Export earnings</th>
+                <th>Battery wear</th>
+                <th>Net benefit</th>
+                <th>Extra vs baseline</th>
+              </tr>
+            </thead>
+            <tbody id="plan"></tbody>
+          </table>
+        </div>
+        <div class="legend">
+          <span><strong>Battery scale:</strong> 100% = 42.0 kWh; 1% = 0.42 kWh.</span>
+          <span><strong>Export without cheap charging:</strong> same forecast and safety rules, but no 10 AM–2 PM grid charge.</span>
+          <span><strong>Extra vs baseline:</strong> daily cash attribution; the seven-day headline also values energy retained at the horizon edge.</span>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="ml-heading">
+        <div class="section-heading">
+          <div><p class="eyebrow">FORECAST CHECK</p><h2 id="ml-heading">ML performance monitor</h2></div>
+        </div>
+        <div id="ml-performance">Loading validation history…</div>
+      </section>
+
+      <footer>Read-only view. The joint optimiser cannot change FoxESS settings. Existing rule-based export automation is unchanged.</footer>
     </main>
   </body>
 </html>

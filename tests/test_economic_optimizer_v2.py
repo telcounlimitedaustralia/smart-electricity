@@ -6,6 +6,45 @@ import economic_optimizer_v2 as optimiser
 
 
 class JointOptimisationTests(unittest.TestCase):
+    def test_battery_side_values_include_losses_wear_and_terminal_value(self):
+        start = datetime(2026, 10, 3)
+        hours = [
+            {
+                "timestamp": (start + timedelta(hours=hour)).isoformat(),
+                "day": "2026-10-03",
+                "hour": hour,
+                "solar_kwh": 0.0,
+                "load_kwh": 0.0,
+            }
+            for hour in range(24)
+        ]
+
+        def import_rate(ts):
+            return (11.11 if 10 <= ts.hour < 14 else 32.12, "test")
+
+        def export_rate(ts):
+            return (28.0 if 17 <= ts.hour < 21 else 3.0, "test")
+
+        with patch.object(optimiser, "import_rate", side_effect=import_rate), patch.object(
+            optimiser, "export_rate", side_effect=export_rate
+        ):
+            result = optimiser.simulate(
+                hours,
+                start_energy=21.0,
+                charges={"2026-10-03": 10.0},
+                exports={"2026-10-03": 5.0},
+            )
+
+        day = result["daily"]["2026-10-03"]
+        self.assertAlmostEqual(day["grid_stored"], 9.5, places=4)
+        self.assertAlmostEqual(
+            day["premium_export_battery_draw"],
+            5.0 / optimiser.DISCHARGE_EFF,
+            places=4,
+        )
+        self.assertGreater(result["degradation_cost"], 0.0)
+        self.assertGreater(result["planning_value"], result["net_value"])
+
     def test_joint_search_crosses_charge_export_coordination_trap(self):
         """Charge-only loses money and export-only is unsafe; both win."""
         start = datetime(2026, 10, 3)

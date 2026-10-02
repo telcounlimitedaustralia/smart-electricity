@@ -11,6 +11,7 @@ Multi-day economic optimisation of:
 SHADOW ONLY - NO FOXESS CONTROL.
 """
 
+import os
 import sys
 from datetime import datetime
 
@@ -45,6 +46,21 @@ EXPORT_START = 17
 EXPORT_END = 21
 
 ACTION_STEP_KWH = 1.0
+
+# Shadow-planning assumptions. They are deliberately configurable and do not
+# affect the existing rule-based executor.
+DEGRADATION_COST_CENTS_PER_BATTERY_KWH = float(
+    os.getenv("SHADOW_BATTERY_DEGRADATION_CENTS_PER_KWH", "3.0")
+)
+SOLAR_PROTECTION_FACTOR = float(
+    os.getenv("SHADOW_SOLAR_PROTECTION_FACTOR", "0.90")
+)
+TERMINAL_ENERGY_VALUE_CENTS_PER_KWH = float(
+    os.getenv(
+        "SHADOW_TERMINAL_ENERGY_VALUE_CENTS_PER_KWH",
+        "16.0",
+    )
+)
 
 # Protect against forecast error.
 BASE_RESERVE_KWH = 3.42
@@ -190,20 +206,29 @@ def build_hours():
         )
         safe_load_kwh = float(point_load_kwh) * safe_scale
 
-        solar_kwh = float(
+        solar_point_kwh = float(
             pv_for_hour(
                 row["shortwave_radiation"]
             )
+        )
+
+        # Optimise against a conservative solar case while retaining the
+        # unadjusted point forecast for transparent dashboard reporting.
+        protected_solar_kwh = (
+            solar_point_kwh
+            * max(0.0, min(1.0, SOLAR_PROTECTION_FACTOR))
         )
 
         hours.append({
             "timestamp": row["timestamp"],
             "day": day,
             "hour": hour,
-            "solar_kwh": solar_kwh,
+            "solar_kwh": protected_solar_kwh,
+            "solar_point_kwh": solar_point_kwh,
             "base_load_kwh": float(point_load_kwh),
             "load_kwh": safe_load_kwh,
             "load_scenario": "CALIBRATED_SAFE",
+            "solar_scenario": "PROTECTED_DOWNSIDE",
         })
 
     return hours, ml
@@ -262,6 +287,7 @@ def simulate(
     total_grid_import = 0.0
     total_grid_export = 0.0
     total_grid_charge = 0.0
+    battery_throughput = 0.0
 
     daily = {}
 
@@ -279,12 +305,19 @@ def simulate(
             daily[day] = {
                 "start_energy": energy,
                 "solar": 0.0,
+                "solar_point": 0.0,
                 "load": 0.0,
+                "base_load": 0.0,
                 "grid_import": 0.0,
                 "pre_10am_grid_import": 0.0,
                 "grid_charge": 0.0,
+                "grid_stored": 0.0,
                 "natural_export": 0.0,
                 "premium_export": 0.0,
+                "premium_export_battery_draw": 0.0,
+                "battery_to_home_draw": 0.0,
+                "battery_throughput": 0.0,
+                "degradation_cost": 0.0,
                 "import_cost": 0.0,
                 "export_revenue": 0.0,
                 "pre_shoulder_energy": None,
@@ -311,7 +344,15 @@ def simulate(
         )
 
         d["solar"] += solar
+        d["solar_point"] += max(
+            0.0,
+            float(item.get("solar_point_kwh", solar))
+        )
         d["load"] += load
+        d["base_load"] += max(
+            0.0,
+            float(item.get("base_load_kwh", load))
+        )
 
         # Capture battery state immediately before
         # the cheap 10AM shoulder charging window.
@@ -337,6 +378,8 @@ def simulate(
             )
 
             energy += stored
+            battery_throughput += stored
+            d["battery_throughput"] += stored
 
             solar_used_for_charge = (
                 stored / CHARGE_EFF
@@ -404,6 +447,9 @@ def simulate(
             )
 
             energy -= battery_draw
+            battery_throughput += battery_draw
+            d["battery_throughput"] += battery_draw
+            d["battery_to_home_draw"] += battery_draw
 
             grid_needed = max(
                 0.0,
@@ -491,6 +537,9 @@ def simulate(
             )
 
             energy += stored
+            battery_throughput += stored
+            d["battery_throughput"] += stored
+            d["grid_stored"] += stored
 
             if actual_charge > 0:
 
@@ -594,6 +643,9 @@ def simulate(
             )
 
             energy -= battery_draw
+            battery_throughput += battery_draw
+            d["battery_throughput"] += battery_draw
+            d["premium_export_battery_draw"] += battery_draw
 
             if actual_export > 0:
 
@@ -634,14 +686,34 @@ def simulate(
 
         d["end_energy"] = energy
 
+    degradation_cost = (
+        battery_throughput
+        * DEGRADATION_COST_CENTS_PER_BATTERY_KWH
+        / 100.0
+    )
+    for d in daily.values():
+        d["degradation_cost"] = (
+            d["battery_throughput"]
+            * DEGRADATION_COST_CENTS_PER_BATTERY_KWH
+            / 100.0
+        )
+
+    cash_value = export_revenue - import_cost - degradation_cost
+    terminal_value = (
+        max(0.0, energy - MIN_KWH)
+        * TERMINAL_ENERGY_VALUE_CENTS_PER_KWH
+        / 100.0
+    )
+
     return {
         "import_cost": import_cost,
         "export_revenue": export_revenue,
+        "degradation_cost": degradation_cost,
+        "battery_throughput": battery_throughput,
 
-        "net_value": (
-            export_revenue
-            - import_cost
-        ),
+        "net_value": cash_value,
+        "terminal_value": terminal_value,
+        "planning_value": cash_value + terminal_value,
 
         "grid_import": total_grid_import,
         "grid_export": total_grid_export,
@@ -764,7 +836,11 @@ def score_strategy(
     ):
         return None, result
 
-    return result["net_value"], result
+    # The last forecast day must not be rewarded for emptying the battery just
+    # beyond the visible horizon. Retained usable energy is valued at the
+    # avoided standard-import rate for selection only; cash value stays
+    # separately visible in the dashboard.
+    return result["planning_value"], result
 
 
 def optimise_export_only_baseline(
@@ -992,6 +1068,64 @@ def optimise_horizon(
         if not changed:
             break
 
+    # A second whole-horizon sweep changes two adjacent days together. This
+    # catches cases where charging/retaining on one day only becomes valuable
+    # when the following day's export changes at the same time.
+    def nearby(value, maximum):
+        return sorted({
+            0.0,
+            round(value, 2),
+            round(max(0.0, value - 5.0), 2),
+            round(min(maximum, value + 5.0), 2),
+        })
+
+    max_charge = MAX_GRID_CHARGE_KW * (SHOULDER_END - SHOULDER_START)
+    max_export = MAX_EXPORT_KW * (EXPORT_END - EXPORT_START)
+    for first_day, second_day in zip(days, days[1:]):
+        local_best = None
+        for first_charge in nearby(charges[first_day], max_charge):
+            for first_export in nearby(exports[first_day], max_export):
+                for second_charge in nearby(charges[second_day], max_charge):
+                    for second_export in nearby(exports[second_day], max_export):
+                        trial_charges = dict(charges)
+                        trial_exports = dict(exports)
+                        trial_charges[first_day] = first_charge
+                        trial_exports[first_day] = first_export
+                        trial_charges[second_day] = second_charge
+                        trial_exports[second_day] = second_export
+                        candidate_score, candidate_result = score_strategy(
+                            hours,
+                            start_energy,
+                            days,
+                            trial_charges,
+                            trial_exports,
+                            baseline_pre10=baseline_pre10,
+                        )
+                        if candidate_score is None or candidate_score <= best_score + 0.0001:
+                            continue
+                        requested = (
+                            (first_day, first_charge, first_export),
+                            (second_day, second_charge, second_export),
+                        )
+                        if any(
+                            (
+                                charge >= 0.5
+                                and candidate_result["daily"][day]["grid_charge"]
+                                < charge - 0.10
+                            )
+                            or (
+                                export >= 0.5
+                                and candidate_result["daily"][day]["premium_export"]
+                                < export - 0.10
+                            )
+                            for day, charge, export in requested
+                        ):
+                            continue
+                        best_score = candidate_score
+                        local_best = (trial_charges, trial_exports)
+        if local_best is not None:
+            charges, exports = local_best
+
     final_score, final_result = (
         score_strategy(
             hours,
@@ -1019,6 +1153,9 @@ def optimise_horizon(
 
         "baseline_type":
             "SAFE_EXPORT_ONLY",
+
+        "search_method":
+            "JOINT_DAILY_PAIRS_PLUS_ADJACENT_DAY_LOOKAHEAD",
 
         "final_score":
             final_score,

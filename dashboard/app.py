@@ -22,6 +22,11 @@ from economic_optimizer_v2 import (
     initial_energy as economic_initial_energy,
     optimise_horizon,
     BATTERY_KWH as ECONOMIC_BATTERY_KWH,
+    CHARGE_EFF as ECONOMIC_CHARGE_EFF,
+    DISCHARGE_EFF as ECONOMIC_DISCHARGE_EFF,
+    DEGRADATION_COST_CENTS_PER_BATTERY_KWH,
+    SOLAR_PROTECTION_FACTOR,
+    TERMINAL_ENERGY_VALUE_CENTS_PER_KWH,
 )
 
 app = Flask(__name__)
@@ -731,6 +736,40 @@ def economic_optimizer():
 
             charge_kwh = float(result["charges"].get(day, 0))
             export_kwh = float(result["exports"].get(day, 0))
+            start_day_energy = float(d.get("start_energy", 0))
+            grid_charge_actual = float(d.get("grid_charge", 0))
+            grid_stored = float(d.get("grid_stored", 0))
+            premium_export_actual = float(d.get("premium_export", 0))
+            export_battery_draw = float(
+                d.get("premium_export_battery_draw", 0)
+            )
+            daily_degradation = float(d.get("degradation_cost", 0))
+            daily_cash_value = (
+                float(d.get("export_revenue", 0))
+                - float(d.get("import_cost", 0))
+                - daily_degradation
+            )
+            baseline_daily_value = (
+                float(b.get("export_revenue", 0))
+                - float(b.get("import_cost", 0))
+                - float(b.get("degradation_cost", 0))
+            )
+            load_point = ml_day.get("predicted_load_kwh")
+            load_protected = ml_day.get("safe_load_kwh")
+            load_buffer = ml_day.get("buffer_kwh")
+            buffer_ratio = (
+                float(load_buffer) / max(0.001, float(load_point))
+                if load_buffer is not None and load_point is not None
+                else None
+            )
+            if buffer_ratio is None:
+                confidence = "Not yet rated"
+            elif buffer_ratio <= 0.15:
+                confidence = "High"
+            elif buffer_ratio <= 0.35:
+                confidence = "Moderate"
+            else:
+                confidence = "Cautious"
             next_solar = None
             if day_index + 1 < len(result["days"]):
                 next_day = result["days"][day_index + 1]
@@ -786,7 +825,7 @@ def economic_optimizer():
 
                 "solar_kwh":
                     round(
-                        d.get("solar", 0)
+                        d.get("solar_point", d.get("solar", 0))
                         + (
                             float(actual_today_solar)
                             if day == today_string
@@ -801,11 +840,37 @@ def economic_optimizer():
                     else "FULL_DAY_FORECAST"
                 ),
 
+                "protected_solar_kwh": round(
+                    d.get("solar", 0)
+                    + (
+                        float(actual_today_solar)
+                        if day == today_string
+                        else 0.0
+                    ),
+                    2,
+                ),
+
                 "ml_load_kwh":
-                    ml_day.get("predicted_load_kwh"),
+                    load_point,
 
                 "safe_ml_load_kwh":
-                    ml_day.get("safe_load_kwh"),
+                    load_protected,
+
+                "load_buffer_kwh": load_buffer,
+
+                "confidence": confidence,
+
+                "battery_start_kwh": round(start_day_energy, 2),
+
+                "battery_start_soc": round(
+                    start_day_energy / ECONOMIC_BATTERY_KWH * 100,
+                    1,
+                ),
+
+                "baseline_export_kwh": round(
+                    b.get("premium_export", 0),
+                    2,
+                ),
 
                 "recommended_charge_kwh":
                     round(
@@ -814,10 +879,14 @@ def economic_optimizer():
                     ),
 
                 "actual_simulated_charge_kwh":
-                    round(
-                        d.get("grid_charge", 0),
-                        2
-                    ),
+                    round(grid_charge_actual, 2),
+
+                "stored_from_grid_kwh": round(grid_stored, 2),
+
+                "stored_from_grid_pct": round(
+                    grid_stored / ECONOMIC_BATTERY_KWH * 100,
+                    1,
+                ),
 
                 "recommended_export_kwh":
                     round(
@@ -826,12 +895,17 @@ def economic_optimizer():
                     ),
 
                 "simulated_premium_export_kwh":
-                    round(
-                        d.get(
-                            "premium_export", 0
-                        ),
-                        2
-                    ),
+                    round(premium_export_actual, 2),
+
+                "battery_used_for_export_kwh": round(
+                    export_battery_draw,
+                    2,
+                ),
+
+                "battery_used_for_export_pct": round(
+                    export_battery_draw / ECONOMIC_BATTERY_KWH * 100,
+                    1,
+                ),
 
                 "natural_export_kwh":
                     round(
@@ -851,6 +925,10 @@ def economic_optimizer():
                         1
                     ),
 
+                "battery_5pm_kwh": None
+                    if pre_export is None
+                    else round(pre_export, 2),
+
                 "end_soc":
                     None
                     if end_energy is None
@@ -860,6 +938,10 @@ def economic_optimizer():
                         * 100,
                         1
                     ),
+
+                "battery_end_kwh": None
+                    if end_energy is None
+                    else round(end_energy, 2),
 
                 "pre_10am_import_kwh":
                     round(
@@ -876,6 +958,11 @@ def economic_optimizer():
                         2
                     ),
 
+                "household_import_kwh": round(
+                    max(0.0, d.get("grid_import", 0) - grid_charge_actual),
+                    2,
+                ),
+
                 "import_cost":
                     round(
                         d.get("import_cost", 0),
@@ -890,12 +977,17 @@ def economic_optimizer():
                         2
                     ),
 
+                "degradation_cost": round(daily_degradation, 2),
+
                 "net_value":
-                    round(
-                        d.get("export_revenue", 0)
-                        - d.get("import_cost", 0),
-                        2
-                    ),
+                    round(daily_cash_value, 2),
+
+                "baseline_net_value": round(baseline_daily_value, 2),
+
+                "daily_improvement": round(
+                    daily_cash_value - baseline_daily_value,
+                    2,
+                ),
 
                 "baseline_end_soc":
                     round(
@@ -905,13 +997,13 @@ def economic_optimizer():
                         1
                     ),
 
-                "baseline_export_kwh":
-                    round(
-                        result["baseline_exports"].get(day, 0),
-                        2
-                    ),
-
-                "reason": action_reason,
+                "reason": (
+                    f"{action_reason} Protected case: "
+                    f"{confidence.lower()} confidence, load buffer "
+                    f"{float(load_buffer or 0):.1f} kWh and "
+                    f"{int(round((1.0 - SOLAR_PROTECTION_FACTOR) * 100))}% "
+                    "solar downside."
+                ),
             })
 
         baseline_value = float(
@@ -921,10 +1013,14 @@ def economic_optimizer():
         optimised_value = float(
             result["final_score"]
         )
+        baseline_cash_value = float(baseline.get("net_value", 0))
+        optimised_cash_value = float(final.get("net_value", 0))
+        planning_improvement = optimised_value - baseline_value
+        cash_improvement = optimised_cash_value - baseline_cash_value
 
         payload = {
             "available": True,
-            "mode": "JOINT_SHADOW_RULE_EXPORT_LIVE",
+            "mode": "JOINT_SHADOW_RULE_BASED_LIVE",
             "control_enabled": False,
             "telegram_notifications": True,
             "automation": {
@@ -947,8 +1043,30 @@ def economic_optimizer():
             "starting_soc":
                 round(start_soc, 1),
 
+            "battery_capacity_kwh": ECONOMIC_BATTERY_KWH,
+
+            "assumptions": {
+                "charge_efficiency_percent": round(ECONOMIC_CHARGE_EFF * 100, 1),
+                "discharge_efficiency_percent": round(ECONOMIC_DISCHARGE_EFF * 100, 1),
+                "battery_floor_percent": 10.0,
+                "degradation_cents_per_battery_kwh": round(
+                    DEGRADATION_COST_CENTS_PER_BATTERY_KWH,
+                    2,
+                ),
+                "solar_protection_percent": round(
+                    SOLAR_PROTECTION_FACTOR * 100,
+                    1,
+                ),
+                "terminal_energy_value_cents_per_kwh": round(
+                    TERMINAL_ENERGY_VALUE_CENTS_PER_KWH,
+                    2,
+                ),
+            },
+
             "baseline_value":
-                round(baseline_value, 2),
+                round(baseline_cash_value, 2),
+
+            "baseline_planning_value": round(baseline_value, 2),
 
             "baseline_type":
                 result.get(
@@ -957,17 +1075,25 @@ def economic_optimizer():
                 ),
 
             "baseline_label":
-                "Safe export-only planner",
+                "Export without cheap charging",
 
             "optimised_value":
-                round(optimised_value, 2),
+                round(optimised_cash_value, 2),
+
+            "optimised_planning_value": round(optimised_value, 2),
 
             "projected_improvement":
-                round(
-                    optimised_value
-                    - baseline_value,
-                    2
-                ),
+                round(planning_improvement, 2),
+
+            "cash_improvement": round(cash_improvement, 2),
+
+            "terminal_value_difference": round(
+                float(final.get("terminal_value", 0))
+                - float(baseline.get("terminal_value", 0)),
+                2,
+            ),
+
+            "search_method": result.get("search_method"),
 
             "total_grid_charge_kwh":
                 round(
@@ -1016,8 +1142,8 @@ def economic_optimizer():
             economic_cache_lock.release()
         return jsonify({
             "available": False,
-            "mode": "LIVE_GUARDED",
-            "control_enabled": True,
+            "mode": "JOINT_SHADOW",
+            "control_enabled": False,
             "error": str(e)
         }), 500
 
