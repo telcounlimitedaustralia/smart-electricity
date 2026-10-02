@@ -837,9 +837,9 @@ def score_strategy(
         return None, result
 
     # The last forecast day must not be rewarded for emptying the battery just
-    # beyond the visible horizon. Retained usable energy is valued at the
-    # avoided standard-import rate for selection only; cash value stays
-    # separately visible in the dashboard.
+    # beyond the visible horizon. Retained usable energy receives a
+    # conservative, configurable fraction of its future avoided-import value
+    # for selection only; cash value stays separately visible in the dashboard.
     return result["planning_value"], result
 
 

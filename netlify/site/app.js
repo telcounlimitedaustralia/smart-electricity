@@ -78,6 +78,7 @@ function renderEconomics(optimiser) {
 
 function renderPlan(optimiser) {
   const days = optimiser.days || [];
+  const assumptions = optimiser.assumptions || {};
   document.querySelector("#plan").innerHTML = days.map((day, index) => `
     <tr class="${index === 0 ? "today-row" : ""}">
       <td class="date-cell"><strong>${index === 0 ? "Today · " : ""}${esc(day.date)}</strong><small>${esc(day.solar_basis || "")}</small></td>
@@ -101,6 +102,7 @@ function renderPlan(optimiser) {
       <td class="reason-cell"><span class="confidence ${String(day.confidence || "").toLowerCase()}">${esc(day.confidence)}</span>${esc(day.reason)}</td>
     </tr>
   `).join("");
+  document.querySelector("#assumptions").innerHTML = `<strong>Planning assumptions:</strong> ${num(assumptions.charge_efficiency_percent, 1)}% charge efficiency, ${num(assumptions.discharge_efficiency_percent, 1)}% discharge efficiency, ${num(assumptions.degradation_cents_per_battery_kwh, 1)}c battery-wear allowance per battery kWh, ${num(assumptions.solar_protection_percent, 0)}% protected solar, and ${num(assumptions.terminal_energy_value_cents_per_kwh, 1)}c/kWh retained-energy value.`;
 }
 
 function renderMl(performance) {
