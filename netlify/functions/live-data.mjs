@@ -45,7 +45,10 @@ export default async (request) => {
     const upstream = new URL(`/api/${view}`, baseUrl);
     const response = await fetch(upstream, {
       headers: { authorization: basicAuth(username, password) },
-      signal: AbortSignal.timeout(15000),
+      // The economic optimiser evaluates a seven-day search and can take
+      // longer than 15 seconds when its VM cache is cold. Netlify allows a
+      // 60-second synchronous function, so keep a small platform margin.
+      signal: AbortSignal.timeout(50000),
     });
     const text = await response.text();
 
