@@ -111,18 +111,57 @@ function renderMl(performance) {
     target.innerHTML = `<p class="empty">${esc(performance.reason || "No validated forecast days yet.")}</p>`;
     return;
   }
-  const accuracy = Number(performance.ml_mae_kwh) <= 1 ? "High" : Number(performance.ml_mae_kwh) <= 3 ? "Moderate" : "Low";
+  const metrics = performance.metrics || {};
   const latest = [...(performance.daily || [])].slice(-7).reverse();
+  const metricCard = (label, metric, note) => {
+    const coverage = `${metric?.comparable_days || 0}/${performance.validated_days} days`;
+    const value = metric?.mae == null
+      ? "Collecting"
+      : metric.unit === "$" ? money(metric.mae) : kwh(metric.mae, 2);
+    const bias = metric?.bias == null
+      ? note
+      : `${Number(metric.bias) < 0 ? "forecast low" : "forecast high"} by ${metric.unit === "$" ? money(Math.abs(metric.bias)) : kwh(Math.abs(metric.bias), 2)} avg`;
+    return `<article><span>${label}</span><strong>${value}</strong><small>average error · ${coverage}</small><small>${bias}</small></article>`;
+  };
+  const pair = (forecast, actual, formatter = value => kwh(value)) => stack(
+    `F ${formatter(forecast)}`,
+    `A ${formatter(actual)}`
+  );
+  const errorText = (value, formatter = number => kwh(number)) => value == null
+    ? "not recorded"
+    : `${Number(value) > 0 ? "+" : ""}${formatter(value)}`;
   target.innerHTML = `
+    <div class="audit-status"><span class="evidence-pill">${esc(performance.evidence_label)}</span><strong>${performance.validated_days} completed days</strong><span>Trend judgement starts after ${performance.data_quality?.minimum_days_for_trend || 7} days.</span></div>
     <div class="audit-cards">
-      <article><span>Validated days</span><strong>${performance.validated_days}</strong><small>forecast vs actual</small></article>
-      <article><span>ML average error</span><strong>${kwh(performance.ml_mae_kwh, 2)}</strong><small class="${accuracy.toLowerCase()}">${accuracy} accuracy</small></article>
-      <article><span>Protected-plan error</span><strong>${kwh(performance.safe_ml_mae_kwh, 2)}</strong><small>includes safety buffer</small></article>
-      <article><span>ML bias</span><strong>${kwh(performance.ml_bias_kwh, 2)}</strong><small>${Number(performance.ml_bias_kwh) < 0 ? "usually predicts low" : "usually predicts high"}</small></article>
+      ${metricCard("Solar", metrics.solar, "gross PV")}
+      ${metricCard("Home use", metrics.home_use, "ML point forecast")}
+      ${metricCard("5–9 PM export", metrics.premium_export, "same premium window")}
+      ${metricCard("Grid imports", metrics.grid_import, "new snapshots will add forecasts")}
+      ${metricCard("5–9 PM revenue", metrics.premium_revenue, "same 28c window")}
     </div>
-    <div class="scroll audit-scroll"><table class="audit-table"><thead><tr><th>Date</th><th>Actual home use</th><th>ML forecast</th><th>Protected forecast</th><th>ML error</th><th>Better forecast</th></tr></thead><tbody>
-      ${latest.map(row => `<tr><td>${esc(row.date)}</td><td>${kwh(row.actual_kwh)}</td><td>${kwh(row.ml_kwh)}</td><td>${kwh(row.safe_ml_kwh)}</td><td>${kwh(row.ml_error_kwh)}</td><td>${esc(row.winner)}</td></tr>`).join("")}
+    <div class="scroll audit-scroll"><table class="audit-table"><thead><tr>
+      <th>Date</th>
+      <th>Solar<br><small>forecast / actual</small></th>
+      <th>Home use<br><small>forecast / actual</small></th>
+      <th>5–9 PM export<br><small>planned / actual</small></th>
+      <th>Grid imports<br><small>forecast / actual</small></th>
+      <th>5–9 PM revenue<br><small>forecast / actual</small></th>
+      <th>Actual all-day result<br><small>export / revenue / net</small></th>
+    </tr></thead><tbody>
+      ${latest.map(row => `<tr>
+        <td><strong>${esc(row.date)}</strong><small class="coverage-note">${num(row.premium_window_coverage_hours, 1)}h premium data</small></td>
+        <td>${pair(row.solar_forecast_kwh, row.solar_actual_kwh)}<small class="audit-error">Error ${errorText(row.solar_error_kwh)}</small></td>
+        <td>${pair(row.load_forecast_kwh, row.load_actual_kwh)}<small class="audit-error">Error ${errorText(row.load_error_kwh)}</small><small class="coverage-note">Protected ${kwh(row.protected_load_kwh)}</small></td>
+        <td>${pair(row.premium_export_forecast_kwh, row.premium_export_actual_kwh)}<small class="audit-error">Error ${errorText(row.premium_export_error_kwh)}</small></td>
+        <td>${pair(row.grid_import_forecast_kwh, row.grid_import_actual_kwh)}<small class="audit-error">Error ${row.grid_import_forecast_kwh == null ? "not recorded" : errorText(row.grid_import_forecast_kwh - row.grid_import_actual_kwh)}</small></td>
+        <td>${pair(row.export_revenue_forecast, row.premium_revenue_actual, money)}<small class="audit-error">Error ${row.export_revenue_forecast == null || row.premium_revenue_actual == null ? "not recorded" : errorText(row.export_revenue_forecast - row.premium_revenue_actual, money)}</small></td>
+        <td>${stack(kwh(row.total_export_actual_kwh), `${money(row.total_export_revenue_actual)} revenue · ${money(row.net_value_actual)} net`)}</td>
+      </tr>`).join("")}
     </tbody></table></div>
+    <div class="audit-notes">
+      <strong>How to read this:</strong> F = forecast, A = actual. ${esc(performance.comparison_definition)}
+      <span>${esc(performance.data_quality?.import_forecast_note || "")}</span>
+    </div>
   `;
 }
 

@@ -141,10 +141,13 @@ def main():
             ml_load_safety_reserve_kwh,
             ml_load_model,
 
+            predicted_grid_import_kwh,
+            predicted_export_revenue,
+
             status
         )
         VALUES (
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
         )
 
         ON CONFLICT(plan_date) DO NOTHING
@@ -174,6 +177,9 @@ def main():
             ml_safe_load,
             ml_safety_reserve,
             ml_load_model,
+
+            today_plan.get("predicted_grid_import_kwh"),
+            today_plan.get("potential_revenue"),
 
             "PENDING"
         )

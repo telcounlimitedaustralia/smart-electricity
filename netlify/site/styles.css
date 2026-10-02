@@ -41,7 +41,7 @@ button:disabled { cursor: wait; opacity: .55; }
 .cards, .summary-grid, .audit-cards { display: grid; gap: 11px; }
 .cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .summary-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 14px; }
-.audit-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 12px; }
+.audit-cards { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 12px; }
 
 article, .panel {
   background: #fff;
@@ -92,8 +92,15 @@ thead th:first-child { z-index: 4; background: #dfeeff; }
 .legend { display: grid; gap: 6px; color: #566b84; background: #f7faff; padding: 11px 13px; border-radius: 8px; margin-top: 10px; font-size: 11px; }
 
 .audit-scroll { margin-top: 12px; }
-.audit-table { min-width: 760px; }
+.audit-table { min-width: 1220px; }
 .audit-table th:first-child, .audit-table td:first-child { position: static; box-shadow: none; }
+.audit-table td { min-width: 145px; }
+.audit-table td:first-child { min-width: 118px; }
+.audit-error, .coverage-note { display: block; color: #64748b; font-size: 10px; margin-top: 5px; }
+.audit-status { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; color: #60738c; font-size: 12px; }
+.audit-status strong { color: #23364d; }
+.evidence-pill { display: inline-block; border-radius: 999px; padding: 4px 8px; color: #9a6700; background: #fff7df; border: 1px solid #ead79b; font-size: 10px; font-weight: 850; text-transform: uppercase; }
+.audit-notes { display: grid; gap: 4px; color: #566b84; background: #f7faff; padding: 11px 13px; border-radius: 8px; margin-top: 10px; font-size: 11px; line-height: 1.45; }
 .empty { color: #64748b; background: #f7f9fc; padding: 15px; border-radius: 8px; }
 #message { color: #b42318; margin-top: 16px; font-weight: 700; }
 footer { padding: 24px 0 2px; text-align: center; }
@@ -101,6 +108,7 @@ footer { padding: 24px 0 2px; text-align: center; }
 @media (max-width: 1100px) {
   .cards { grid-template-columns: repeat(3, 1fr); }
   .summary-grid { grid-template-columns: repeat(3, 1fr); }
+  .audit-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
