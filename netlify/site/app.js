@@ -25,7 +25,7 @@ function showLocalPreview() {
     .map(label => `<article><span>${label}</span><strong>—</strong></article>`).join("");
   document.querySelector("#decision").textContent = "This local preview has no connection to your live energy data.";
   document.querySelector("#economics").innerHTML = "";
-  document.querySelector("#plan").innerHTML = `<tr><td colspan="19">Live seven-day data will appear here after deployment.</td></tr>`;
+  document.querySelector("#plan").innerHTML = `<tr><td colspan="17">Live seven-day data will appear here after deployment.</td></tr>`;
   document.querySelector("#ml-performance").textContent = "Live forecast validation appears after deployment.";
 }
 
@@ -76,31 +76,43 @@ function renderEconomics(optimiser) {
   `).join("");
 }
 
-function renderPlan(optimiser) {
+function renderPlan(optimiser, rulePlan) {
   const days = optimiser.days || [];
   const assumptions = optimiser.assumptions || {};
+  const premiumRate = Number(optimiser.tariffs?.premium_fit_cents || 28);
+  const ruleByDate = new Map((rulePlan.plans || []).map(day => [day.date, day]));
   document.querySelector("#plan").innerHTML = days.map((day, index) => `
-    <tr class="${index === 0 ? "today-row" : ""}">
-      <td class="date-cell"><strong>${index === 0 ? "Today · " : ""}${esc(day.date)}</strong><small>${esc(day.solar_basis || "")}</small></td>
-      <td>${stack(kwh(day.solar_kwh), `protected ${kwh(day.protected_solar_kwh)}`)}</td>
-      <td>${stack(kwh(day.ml_load_kwh), "ML point")}</td>
-      <td>${stack(kwh(day.safe_ml_load_kwh), `+${num(day.load_buffer_kwh, 1)} kWh protection`)}</td>
-      <td>${battery(day.battery_start_kwh, day.battery_start_soc)}</td>
-      <td>${stack(kwh(day.baseline_export_kwh), "comparison only")}</td>
-      <td>${stack(kwh(day.actual_simulated_charge_kwh), "meter-side AC")}</td>
-      <td>${battery(day.stored_from_grid_kwh, day.stored_from_grid_pct)}</td>
-      <td>${battery(day.battery_5pm_kwh, day.soc_5pm)}</td>
-      <td>${stack(kwh(day.simulated_premium_export_kwh), "meter-side AC")}</td>
-      <td>${battery(day.battery_used_for_export_kwh, day.battery_used_for_export_pct)}</td>
-      <td>${battery(day.battery_end_kwh, day.end_soc)}</td>
-      <td>${stack(kwh(day.grid_import_kwh), `${kwh(day.household_import_kwh)} home`)}</td>
-      <td>${stack(money(day.import_cost), "all imports")}</td>
-      <td>${stack(money(day.export_revenue), "all exports")}</td>
-      <td>${stack(money(day.degradation_cost), "planning allowance")}</td>
-      <td>${stack(money(day.net_value), "daily cash")}</td>
-      <td class="${Number(day.daily_improvement) >= 0 ? "positive" : "negative"}">${stack(money(day.daily_improvement), "vs fair baseline")}</td>
-      <td class="reason-cell"><span class="confidence ${String(day.confidence || "").toLowerCase()}">${esc(day.confidence)}</span>${esc(day.reason)}</td>
-    </tr>
+    ${(() => {
+      const old = ruleByDate.get(day.date) || {};
+      const oldExport = Number(old.recommended_export_kwh ?? day.baseline_export_kwh ?? 0);
+      const oldRevenue = Number(old.potential_revenue ?? (oldExport * premiumRate / 100));
+      const newExport = Number(day.simulated_premium_export_kwh ?? day.recommended_export_kwh ?? 0);
+      const newRevenue = newExport * premiumRate / 100;
+      const uplift = newRevenue - oldRevenue;
+      const charge = Number(day.actual_simulated_charge_kwh ?? day.recommended_charge_kwh ?? 0);
+      const decision = charge > 0 && newExport > 0
+        ? "BUY + EXPORT"
+        : charge > 0 ? "BUY + HOLD" : newExport > 0 ? "SOLAR EXPORT" : "HOLD";
+      return `<tr class="${index === 0 ? "today-row" : ""}">
+        <td class="date-cell"><strong>${index === 0 ? "Today · " : ""}${esc(day.date)}</strong><small>${esc(day.solar_basis || "")}</small></td>
+        <td>${stack(kwh(day.solar_kwh), `protected ${kwh(day.protected_solar_kwh)}`)}</td>
+        <td>${stack(esc(old.solar_rating || "—"), esc(day.confidence || "—"))}</td>
+        <td>${stack(kwh(oldExport), old.export === "NO" ? "retain battery" : "rule plan")}</td>
+        <td>${stack(money(oldRevenue), "premium only")}</td>
+        <td>${stack(kwh(charge), `${kwh(day.stored_from_grid_kwh)} stored`)}</td>
+        <td>${stack(money(day.import_cost), "all planned imports")}</td>
+        <td>${stack(kwh(newExport), decision)}</td>
+        <td>${battery(day.battery_start_kwh, day.battery_start_soc)}</td>
+        <td>${battery(day.battery_5pm_kwh, day.soc_5pm)}</td>
+        <td>${battery(day.battery_end_kwh, day.end_soc)}</td>
+        <td class="${Number(day.pre_10am_import_kwh || 0) <= 0.05 ? "positive" : "negative"}">${stack(kwh(day.pre_10am_import_kwh), "forecast")}</td>
+        <td>${battery(Number(optimiser.battery_capacity_kwh || 42) * Number(assumptions.battery_floor_percent || 10) / 100, assumptions.battery_floor_percent || 10)}</td>
+        <td>${stack(money(newRevenue), "premium only")}</td>
+        <td class="${uplift >= 0 ? "positive" : "negative"}">${stack(money(uplift), "premium revenue")}</td>
+        <td class="${Number(day.daily_improvement) >= 0 ? "positive" : "negative"}">${stack(money(day.daily_improvement), "vs fair no-charge baseline")}</td>
+        <td class="reason-cell"><span class="confidence ${String(day.confidence || "").toLowerCase()}">${esc(decision)}</span>${esc(day.reason)}</td>
+      </tr>`;
+    })()}
   `).join("");
   document.querySelector("#assumptions").innerHTML = `<strong>Planning assumptions:</strong> ${num(assumptions.charge_efficiency_percent, 1)}% charge efficiency, ${num(assumptions.discharge_efficiency_percent, 1)}% discharge efficiency, ${num(assumptions.degradation_cents_per_battery_kwh, 1)}c battery-wear allowance per battery kWh, ${num(assumptions.solar_protection_percent, 0)}% protected solar, and ${num(assumptions.terminal_energy_value_cents_per_kwh, 1)}c/kWh retained-energy value.`;
 }
@@ -169,15 +181,15 @@ async function load() {
   document.querySelector("#message").textContent = "";
   document.querySelector("#refresh").disabled = true;
   try {
-    const [status, today, optimiser, performance] = await Promise.all([
-      api("status"), api("today"), api("economic-optimizer"), api("ml-performance"),
+    const [status, today, optimiser, rulePlan, performance] = await Promise.all([
+      api("status"), api("today"), api("economic-optimizer"), api("export-plan"), api("ml-performance"),
     ]);
     document.querySelector("#updated").textContent = `Updated ${new Date(status.time).toLocaleString()}`;
     const capacity = Number(optimiser.battery_capacity_kwh || 42);
     renderCurrent(status, today, capacity);
     renderDecision(optimiser);
     renderEconomics(optimiser);
-    renderPlan(optimiser);
+    renderPlan(optimiser, rulePlan);
     renderMl(performance);
   } catch (error) {
     document.querySelector("#message").textContent = error.message;

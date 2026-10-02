@@ -2113,7 +2113,7 @@ footer { color:#70879e; }
   .se-three-day-plan { display:grid;grid-template-columns:1fr; }
   .section-heading-row { align-items:flex-start;flex-direction:column; }
   .section-heading-note { text-align:left; }
-  .prediction-table-wrap table { min-width:1420px !important; }
+  .prediction-table-wrap table { min-width:1980px !important; }
 }
 
 /* Consistent light theme requested after visual review. */
@@ -2609,10 +2609,10 @@ footer { color:#63758a !important; }
   <div class="eco-heading">
     <div>
       <h2>
-        💰 Joint Economic Optimiser
+        💰 7-Day Battery, Import &amp; Export Plan
       </h2>
       <p>
-        One view of forecast quality, battery actions, economics and automation
+        Existing rule plan compared with the improved cheap-charge and premium-export shadow plan
       </p>
     </div>
 
@@ -2629,29 +2629,33 @@ footer { color:#63758a !important; }
     <table style="
         width:100%;
         border-collapse:collapse;
-        min-width:1540px;
+        min-width:1980px;
     ">
       <thead>
         <tr>
           <th>Date</th>
-          <th>Total solar<br><small>gross PV</small></th>
-          <th>Expected home use<br><small>ML point</small></th>
-          <th>Protected home use<br><small>planning case</small></th>
-          <th>Solar headroom<br><small>vs protected use</small></th>
-          <th>10AM–2PM charge<br><small>11.11c import</small></th>
-          <th>5PM–9PM export<br><small>28c payment</small></th>
-          <th>Battery SOC<br><small>5PM → end</small></th>
-          <th>Grid import<br><small>total / pre-10AM</small></th>
-          <th>Economics<br><small>cost / revenue / net</small></th>
-          <th>Prediction check</th>
-          <th>Automation</th>
+          <th>Solar forecast<br><small>gross / protected</small></th>
+          <th>Rating<br><small>solar / confidence</small></th>
+          <th>Old export<br><small>rule plan</small></th>
+          <th>Old revenue<br><small>premium export</small></th>
+          <th>10AM–2PM import<br><small>bought / stored</small></th>
+          <th>Import cost</th>
+          <th>New export<br><small>5PM–9PM</small></th>
+          <th>Battery at start</th>
+          <th>Battery at 5PM</th>
+          <th>Battery at midnight</th>
+          <th>Before 10AM import<br><small>expensive grid</small></th>
+          <th>FoxESS minimum</th>
+          <th>New revenue<br><small>premium export</small></th>
+          <th>Revenue uplift<br><small>new − old</small></th>
+          <th>Fair economic gain<br><small>after cost &amp; wear</small></th>
           <th style="min-width:250px">Why this action</th>
         </tr>
       </thead>
 
       <tbody id="economicOptimizerBody">
         <tr>
-          <td colspan="13"
+          <td colspan="17"
               style="padding:18px;text-align:center">
             Loading prediction and automation evidence…
           </td>
@@ -4302,11 +4306,15 @@ async function updateEconomicOptimizer() {
 
   try {
 
-    const response = await fetch(
-      "/api/economic-optimizer"
-    );
+    const [response, ruleResponse] = await Promise.all([
+      fetch("/api/economic-optimizer"),
+      fetch("/api/export-plan")
+    ]);
 
     const data = await response.json();
+    const rulePlan = ruleResponse.ok
+      ? await ruleResponse.json()
+      : {available:false, plans:[]};
 
     if(!response.ok || !data.available) {
       throw new Error(
@@ -4331,13 +4339,31 @@ async function updateEconomicOptimizer() {
     const maeText = performance.available
       ? `${Number(performance.ml_mae_kwh).toFixed(2)} kWh MAE across ${validatedDays} validated day${validatedDays === 1 ? "" : "s"}`
       : "collecting frozen forecast outcomes";
+    const premiumRate = Number(data.tariffs?.premium_fit_cents || 28);
+    const ruleByDate = new Map(
+      (rulePlan.plans || []).map(day => [day.date, day])
+    );
+    const oldRevenueTotal = (rulePlan.plans || []).reduce(
+      (sum, day) => sum + Number(day.potential_revenue || 0),
+      0
+    );
+    const newRevenueTotal = (data.days || []).reduce(
+      (sum, day) => sum +
+        Number(day.simulated_premium_export_kwh || 0) * premiumRate / 100,
+      0
+    );
+    const revenueUpliftTotal = newRevenueTotal - oldRevenueTotal;
     document.getElementById("ecoStatusLine").innerHTML = `
       <strong>Prediction check:</strong> ${maeText} ·
       <strong>Automation:</strong> ${ruleBasedControl
         ? "cheap charge paused · rule snapshot 16:55, export 17:00"
         : "cheap charge 09:55, export 16:55"} ·
-      <strong>7-day value:</strong> $${Number(data.optimised_value).toFixed(2)}
-      (${Number(data.projected_improvement) >= 0 ? "+" : ""}$${Number(data.projected_improvement).toFixed(2)} vs safe export-only)
+      <strong>Premium revenue:</strong> $${oldRevenueTotal.toFixed(2)} old →
+      $${newRevenueTotal.toFixed(2)} new
+      (${revenueUpliftTotal >= 0 ? "+" : "−"}$${Math.abs(revenueUpliftTotal).toFixed(2)}) ·
+      <strong>Fair economic gain:</strong>
+      ${Number(data.cash_improvement) >= 0 ? "+" : "−"}$${Math.abs(Number(data.cash_improvement)).toFixed(2)}
+      vs the like-for-like no-charge baseline after import cost and configured wear
     `;
 
     const todayDecision = data.days && data.days[0];
@@ -4357,38 +4383,49 @@ async function updateEconomicOptimizer() {
     }
 
     body.innerHTML = data.days.map((d, index) => {
+      const old = ruleByDate.get(d.date) || {};
       const solar = Number(d.solar_kwh || 0);
-      const expectedLoad = Number(d.ml_load_kwh || 0);
-      const protectedLoad = Number(d.safe_ml_load_kwh || expectedLoad);
-      const headroom = solar - protectedLoad;
-      const charge = Number(d.recommended_charge_kwh || 0);
-      const exportKwh = Number(d.recommended_export_kwh || 0);
-      const totalImport = Number(d.grid_import_kwh || 0);
+      const protectedSolar = Number(d.protected_solar_kwh || solar);
+      const charge = Number(d.actual_simulated_charge_kwh ?? d.recommended_charge_kwh ?? 0);
+      const stored = Number(d.stored_from_grid_kwh || 0);
+      const exportKwh = Number(d.simulated_premium_export_kwh ?? d.recommended_export_kwh ?? 0);
+      const oldExport = Number(old.recommended_export_kwh ?? d.baseline_export_kwh ?? 0);
+      const oldRevenue = Number(old.potential_revenue ?? (oldExport * premiumRate / 100));
+      const newRevenue = exportKwh * premiumRate / 100;
+      const revenueUplift = newRevenue - oldRevenue;
       const morningImport = Number(d.pre_10am_import_kwh || 0);
-      const forecastStatus = index === 0
-        ? "Actual + remaining forecast"
-        : "Full-day forecast";
-      const uncertainty = Math.max(0, protectedLoad - expectedLoad);
-      const autoStatus = d.automation_status || (index === 0 ? "ENABLED" : "SCHEDULED");
-      const autoClass = autoStatus.includes("FAILED") ? "status-warn" : "status-live";
+      const capacity = Number(data.battery_capacity_kwh || 42);
+      const minSoc = Number(data.assumptions?.battery_floor_percent || 10);
+      const minKwh = capacity * minSoc / 100;
+      const decision = charge > 0 && exportKwh > 0
+        ? "BUY + EXPORT"
+        : charge > 0
+          ? "BUY + HOLD"
+          : exportKwh > 0
+            ? "SOLAR EXPORT"
+            : "HOLD";
       const date = new Date(d.date + "T00:00:00");
       const dateLabel = `${index === 0 ? "Today · " : ""}${date.toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})}`;
 
       return `
         <tr>
           <td><span class="metric-main">${dateLabel}</span><span class="metric-sub">${d.date}</span></td>
-          <td><span class="metric-main">${solar.toFixed(1)} kWh</span><span class="metric-sub">${d.solar_basis === "ACTUAL_SO_FAR_PLUS_REMAINING_FORECAST" ? "actual so far + forecast" : "weather forecast"}</span></td>
-          <td><span class="metric-main">${expectedLoad.toFixed(1)} kWh</span><span class="metric-sub">most likely use</span></td>
-          <td><span class="metric-main">${protectedLoad.toFixed(1)} kWh</span><span class="metric-sub">+${uncertainty.toFixed(1)} kWh protection</span></td>
-          <td><span class="metric-main ${headroom >= 0 ? "headroom-positive" : "headroom-negative"}">${headroom >= 0 ? "+" : ""}${headroom.toFixed(1)} kWh</span><span class="metric-sub">gross solar − protected use</span></td>
-          <td><span class="metric-main">${charge > 0 ? charge.toFixed(1) + " kWh" : "None"}</span><span class="metric-sub">${charge > 0 ? "automated ForceCharge" : "no cheap import"}</span></td>
-          <td><span class="metric-main">${exportKwh > 0 ? exportKwh.toFixed(1) + " kWh" : "None"}</span><span class="metric-sub">${exportKwh > 0 ? "automated premium export" : "retain energy"}</span></td>
-          <td><span class="metric-main">${Number(d.soc_5pm).toFixed(0)}% → ${Number(d.end_soc).toFixed(0)}%</span><span class="metric-sub">10% absolute floor</span></td>
-          <td><span class="metric-main">${totalImport.toFixed(1)} / ${morningImport.toFixed(1)} kWh</span><span class="metric-sub">total / before 10AM</span></td>
-          <td><span class="metric-main">$${Number(d.import_cost || 0).toFixed(2)} / $${Number(d.export_revenue || 0).toFixed(2)} / $${Number(d.net_value || 0).toFixed(2)}</span><span class="metric-sub">cost / revenue / net</span></td>
-          <td><span class="status-pill ${validatedDays >= 7 ? "status-good" : "status-warn"}">${validatedDays >= 7 ? "CALIBRATING WELL" : "EARLY EVIDENCE"}</span><span class="metric-sub">${forecastStatus} · ${maeText}</span></td>
-          <td><span class="status-pill ${autoClass}">${autoStatus}</span><span class="metric-sub">Telegram ${data.telegram_notifications ? "enabled" : "off"}</span></td>
-          <td>${d.reason || "—"}</td>
+          <td><span class="metric-main">${solar.toFixed(1)} kWh</span><span class="metric-sub">${protectedSolar.toFixed(1)} kWh protected</span></td>
+          <td><span class="metric-main">${old.solar_rating || "—"}</span><span class="metric-sub">${d.confidence || "—"} confidence</span></td>
+          <td><span class="metric-main">${oldExport.toFixed(1)} kWh</span><span class="metric-sub">existing rule plan</span></td>
+          <td><span class="metric-main">$${oldRevenue.toFixed(2)}</span><span class="metric-sub">premium only</span></td>
+          <td><span class="metric-main">${charge > 0 ? charge.toFixed(1) + " kWh" : "None"}</span><span class="metric-sub">${stored.toFixed(1)} kWh stored</span></td>
+          <td><span class="metric-main">$${Number(d.import_cost || 0).toFixed(2)}</span><span class="metric-sub">all planned imports</span></td>
+          <td><span class="metric-main">${exportKwh.toFixed(1)} kWh</span><span class="metric-sub">${decision}</span></td>
+          <td><span class="metric-main">${Number(d.battery_start_soc).toFixed(1)}%</span><span class="metric-sub">${Number(d.battery_start_kwh).toFixed(1)} kWh</span></td>
+          <td><span class="metric-main">${Number(d.soc_5pm).toFixed(1)}%</span><span class="metric-sub">${Number(d.battery_5pm_kwh).toFixed(1)} kWh</span></td>
+          <td><span class="metric-main">${Number(d.end_soc).toFixed(1)}%</span><span class="metric-sub">${Number(d.battery_end_kwh).toFixed(1)} kWh</span></td>
+          <td><span class="metric-main ${morningImport <= 0.05 ? "headroom-positive" : "headroom-negative"}">${morningImport.toFixed(1)} kWh</span><span class="metric-sub">forecast before cheap window</span></td>
+          <td><span class="metric-main">${minSoc.toFixed(1)}%</span><span class="metric-sub">${minKwh.toFixed(1)} kWh</span></td>
+          <td><span class="metric-main">$${newRevenue.toFixed(2)}</span><span class="metric-sub">premium only</span></td>
+          <td><span class="metric-main ${revenueUplift >= 0 ? "headroom-positive" : "headroom-negative"}">${revenueUplift >= 0 ? "+" : "−"}$${Math.abs(revenueUplift).toFixed(2)}</span><span class="metric-sub">new − old revenue</span></td>
+          <td><span class="metric-main ${Number(d.daily_improvement) >= 0 ? "headroom-positive" : "headroom-negative"}">${Number(d.daily_improvement) >= 0 ? "+" : "−"}$${Math.abs(Number(d.daily_improvement || 0)).toFixed(2)}</span><span class="metric-sub">vs fair no-charge baseline</span></td>
+          <td><span class="status-pill status-warn">${decision}</span><span class="metric-sub">${d.reason || "—"}</span></td>
         </tr>
       `;
     }).join("");

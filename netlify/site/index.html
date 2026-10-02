@@ -44,8 +44,8 @@
         <div class="section-heading">
           <div>
             <p class="eyebrow">JOINT ECONOMIC OPTIMISER</p>
-            <h2 id="plan-heading">Complete seven-day plan</h2>
-            <p class="subtext">One comparable view of forecast, battery actions, losses, imports and value.</p>
+            <h2 id="plan-heading">7-day battery, import &amp; export plan</h2>
+            <p class="subtext">The existing rule plan compared with the improved cheap-charge and premium-export shadow plan.</p>
           </div>
           <span class="status-pill rule-pill">Rule-based automation remains live</span>
         </div>
@@ -54,30 +54,28 @@
             <thead>
               <tr class="group-row">
                 <th rowspan="2">Date</th>
-                <th colspan="3">Forecast</th>
-                <th colspan="2">Starting point</th>
-                <th colspan="6">Joint shadow plan</th>
-                <th colspan="6">Economics</th>
+                <th colspan="2">Forecast</th>
+                <th colspan="2">Existing rule plan</th>
+                <th colspan="8">Improved shadow plan</th>
+                <th colspan="3">Comparison</th>
                 <th rowspan="2">Why this decision</th>
               </tr>
               <tr>
-                <th>Solar<br><small>gross PV</small></th>
-                <th>Expected home use<br><small>ML point</small></th>
-                <th>Protected home use<br><small>planning case</small></th>
+                <th>Solar forecast<br><small>gross / protected</small></th>
+                <th>Rating<br><small>solar / confidence</small></th>
+                <th>Old export<br><small>5–9 PM</small></th>
+                <th>Old revenue<br><small>premium export</small></th>
+                <th>10 AM–2 PM import<br><small>bought / stored</small></th>
+                <th>Import cost</th>
+                <th>New export<br><small>5–9 PM</small></th>
                 <th>Battery at start</th>
-                <th>Export without<br>cheap charging</th>
-                <th>Cheap energy bought<br><small>grid AC</small></th>
-                <th>Added to battery<br><small>after loss</small></th>
                 <th>Battery at 5 PM</th>
-                <th>Premium export<br><small>meter AC</small></th>
-                <th>Battery used<br>for export</th>
                 <th>Battery at midnight</th>
-                <th>Total imports</th>
-                <th>Energy cost</th>
-                <th>Export earnings</th>
-                <th>Battery wear</th>
-                <th>Net benefit</th>
-                <th>Extra vs baseline</th>
+                <th>Before 10 AM import<br><small>expensive grid</small></th>
+                <th>FoxESS minimum</th>
+                <th>New revenue<br><small>premium export</small></th>
+                <th>Revenue uplift<br><small>new − old</small></th>
+                <th>Fair economic gain<br><small>after cost &amp; wear</small></th>
               </tr>
             </thead>
             <tbody id="plan"></tbody>
@@ -85,8 +83,10 @@
         </div>
         <div class="legend">
           <span><strong>Battery scale:</strong> 100% = 42.0 kWh; 1% = 0.42 kWh.</span>
-          <span><strong>Export without cheap charging:</strong> same forecast and safety rules, but no 10 AM–2 PM grid charge.</span>
-          <span><strong>Extra vs baseline:</strong> daily cash attribution; the seven-day headline also values energy retained at the horizon edge.</span>
+          <span><strong>Old plan:</strong> the current rule-based seven-day forecast with no 10 AM–2 PM cheap charging.</span>
+          <span><strong>Revenue uplift:</strong> new premium export revenue minus the current rule plan’s premium export revenue.</span>
+          <span><strong>Fair economic gain:</strong> the optimiser’s like-for-like no-charge baseline comparison after import cost and configured battery-wear allowance. It is deliberately separate from gross revenue uplift.</span>
+          <span><strong>Control:</strong> this table is shadow analysis only. It cannot change FoxESS settings.</span>
           <span id="assumptions"><strong>Planning assumptions:</strong> loading…</span>
         </div>
       </section>
