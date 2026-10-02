@@ -56,7 +56,7 @@
                 <th rowspan="2">Date</th>
                 <th colspan="2">Forecast</th>
                 <th colspan="2">Existing rule plan</th>
-                <th colspan="8">Improved shadow plan</th>
+                <th colspan="11">Improved shadow plan</th>
                 <th colspan="3">Comparison</th>
                 <th rowspan="2">Why this decision</th>
               </tr>
@@ -69,7 +69,10 @@
                 <th>Import cost</th>
                 <th>New export<br><small>5–9 PM</small></th>
                 <th>Battery at start</th>
+                <th>Solar-only at 5 PM<br><small>no grid charging</small></th>
                 <th>Battery at 5 PM</th>
+                <th>Required after 9 PM<br><small>until recharge</small></th>
+                <th>Next recharge<br><small>solar or 10 AM</small></th>
                 <th>Battery at midnight</th>
                 <th>Before 10 AM import<br><small>expensive grid</small></th>
                 <th>FoxESS minimum</th>
@@ -83,6 +86,8 @@
         </div>
         <div class="legend">
           <span><strong>Battery scale:</strong> 100% = 42.0 kWh; 1% = 0.42 kWh.</span>
+          <span><strong>Solar-first rule:</strong> cheap charging can only close the forecast gap between the solar-only 5 PM battery and 100%.</span>
+          <span><strong>Required after 9 PM:</strong> 10% FoxESS minimum plus predicted household demand until useful solar or the next 10 AM shoulder window.</span>
           <span><strong>Old plan:</strong> the current rule-based seven-day forecast with no 10 AM–2 PM cheap charging.</span>
           <span><strong>Revenue uplift:</strong> new premium export revenue minus the current rule plan’s premium export revenue.</span>
           <span><strong>Fair economic gain:</strong> the optimiser’s like-for-like no-charge baseline comparison after import cost and configured battery-wear allowance. It is deliberately separate from gross revenue uplift.</span>

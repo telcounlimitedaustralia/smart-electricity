@@ -6,6 +6,91 @@ import economic_optimizer_v2 as optimiser
 
 
 class JointOptimisationTests(unittest.TestCase):
+    def test_grid_charge_is_zero_when_solar_alone_fills_battery(self):
+        start = datetime(2026, 10, 3)
+        hours = []
+        for hour in range(24):
+            hours.append({
+                "timestamp": (start + timedelta(hours=hour)).isoformat(),
+                "day": "2026-10-03",
+                "hour": hour,
+                "solar_kwh": 5.0 if 14 <= hour < 17 else 0.0,
+                "load_kwh": 0.0,
+            })
+
+        result = optimiser.simulate(
+            hours,
+            start_energy=optimiser.BATTERY_KWH * 0.70,
+            charges={"2026-10-03": 40.0},
+            exports={"2026-10-03": 0.0},
+        )
+
+        day = result["daily"]["2026-10-03"]
+        self.assertAlmostEqual(day["solar_only_5pm_energy"], optimiser.BATTERY_KWH)
+        self.assertAlmostEqual(day["grid_charge"], 0.0)
+
+    def test_grid_charge_only_closes_solar_only_shortfall(self):
+        start = datetime(2026, 10, 3)
+        hours = []
+        # Starting at 30%, the post-shoulder solar stores 40 percentage points,
+        # so solar alone reaches 70% and grid charging may supply only the 30%
+        # battery shortfall (12.6 kWh stored on a 42 kWh battery).
+        solar_ac = (optimiser.BATTERY_KWH * 0.40) / optimiser.CHARGE_EFF
+        for hour in range(24):
+            hours.append({
+                "timestamp": (start + timedelta(hours=hour)).isoformat(),
+                "day": "2026-10-03",
+                "hour": hour,
+                "solar_kwh": solar_ac if hour == 15 else 0.0,
+                "load_kwh": 0.0,
+            })
+
+        result = optimiser.simulate(
+            hours,
+            start_energy=optimiser.BATTERY_KWH * 0.30,
+            charges={"2026-10-03": 40.0},
+            exports={"2026-10-03": 0.0},
+        )
+
+        day = result["daily"]["2026-10-03"]
+        expected_import = (optimiser.BATTERY_KWH * 0.30) / optimiser.CHARGE_EFF
+        self.assertAlmostEqual(day["solar_only_5pm_soc"], 70.0, places=3)
+        self.assertAlmostEqual(day["grid_charge"], expected_import, places=3)
+        self.assertAlmostEqual(day["pre_export_energy"], optimiser.BATTERY_KWH)
+
+    def test_hot_night_reserve_extends_to_next_10am_shoulder(self):
+        first = datetime(2026, 10, 3)
+        second = datetime(2026, 10, 4)
+        hours = []
+        for start in (first, second):
+            for hour in range(24):
+                load = 0.0
+                if start == first and hour >= 21:
+                    load = 2.0
+                if start == second and hour < 10:
+                    load = 2.0
+                hours.append({
+                    "timestamp": (start + timedelta(hours=hour)).isoformat(),
+                    "day": start.date().isoformat(),
+                    "hour": hour,
+                    "solar_kwh": 0.0,
+                    "load_kwh": load,
+                })
+
+        result = optimiser.simulate(
+            hours,
+            start_energy=optimiser.BATTERY_KWH,
+            charges={},
+            exports={},
+        )
+
+        day = result["daily"]["2026-10-03"]
+        forecast_load = 26.0
+        expected = optimiser.MIN_KWH + forecast_load / optimiser.DISCHARGE_EFF
+        self.assertAlmostEqual(day["required_post_export_energy"], expected, places=3)
+        self.assertEqual(day["next_recharge_type"], "SHOULDER_10AM")
+        self.assertTrue(day["next_recharge_timestamp"].startswith("2026-10-04T10:"))
+
     def test_battery_side_values_include_losses_wear_and_terminal_value(self):
         start = datetime(2026, 10, 3)
         hours = [

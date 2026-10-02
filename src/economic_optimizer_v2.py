@@ -53,7 +53,7 @@ DEGRADATION_COST_CENTS_PER_BATTERY_KWH = float(
     os.getenv("SHADOW_BATTERY_DEGRADATION_CENTS_PER_KWH", "3.0")
 )
 SOLAR_PROTECTION_FACTOR = float(
-    os.getenv("SHADOW_SOLAR_PROTECTION_FACTOR", "0.90")
+    os.getenv("SHADOW_SOLAR_PROTECTION_FACTOR", "1.0")
 )
 TERMINAL_ENERGY_VALUE_CENTS_PER_KWH = float(
     os.getenv(
@@ -68,6 +68,11 @@ RESERVE_INCREMENT_KWH = 0.855
 
 # Extra protection at end of available forecast horizon.
 TERMINAL_RESERVE_KWH = 8.0
+
+# Solar is considered useful when it can cover household load and still add a
+# meaningful amount to the battery.  The recovery horizon is the earlier of
+# this condition or the next 10AM shoulder-price window.
+USEFUL_NET_SOLAR_KWH = 0.20
 
 
 def reserve_for_day(day_index):
@@ -260,11 +265,133 @@ def initial_energy():
     return energy, soc
 
 
+def _project_solar_only_to_5pm(day_hours, start_energy):
+    """Battery energy at 5PM with forecast solar/load and no grid charging."""
+
+    energy = float(start_energy)
+
+    for item in day_hours:
+        if int(item["hour"]) >= EXPORT_START:
+            break
+
+        solar = max(0.0, float(item["solar_kwh"]))
+        load = max(0.0, float(item["load_kwh"]))
+
+        if solar >= load:
+            surplus = solar - load
+            energy += min(
+                surplus * CHARGE_EFF,
+                max(0.0, BATTERY_KWH - energy),
+            )
+        else:
+            deficit = load - solar
+            usable = max(0.0, energy - MIN_KWH)
+            battery_draw = min(
+                deficit / DISCHARGE_EFF if DISCHARGE_EFF > 0 else 0.0,
+                usable,
+            )
+            energy -= battery_draw
+
+        energy = min(BATTERY_KWH, max(MIN_KWH, energy))
+
+    return energy
+
+
+def _recovery_requirement(hours, day):
+    """Energy required at 9PM until useful solar or next 10AM shoulder."""
+
+    requirement_draw = 0.0
+    recovery_timestamp = None
+    recovery_type = "FORECAST_HORIZON"
+    after_export = False
+
+    for item in hours:
+        item_day = item["day"]
+        hour = int(item["hour"])
+
+        if item_day == day and hour >= EXPORT_END:
+            after_export = True
+        elif item_day > day:
+            after_export = True
+
+        if not after_export:
+            continue
+
+        if item_day > day:
+            net_solar = max(
+                0.0,
+                float(item["solar_kwh"]) - float(item["load_kwh"]),
+            )
+
+            if hour >= SHOULDER_START:
+                recovery_timestamp = item["timestamp"]
+                recovery_type = "SHOULDER_10AM"
+                break
+
+            if net_solar >= USEFUL_NET_SOLAR_KWH:
+                recovery_timestamp = item["timestamp"]
+                recovery_type = "USEFUL_SOLAR"
+                break
+
+        deficit = max(
+            0.0,
+            float(item["load_kwh"]) - float(item["solar_kwh"]),
+        )
+        requirement_draw += (
+            deficit / DISCHARGE_EFF
+            if DISCHARGE_EFF > 0
+            else 0.0
+        )
+
+    required_energy = min(
+        BATTERY_KWH,
+        MIN_KWH + requirement_draw,
+    )
+
+    return {
+        "required_energy": required_energy,
+        "forecast_draw": requirement_draw,
+        "recovery_timestamp": recovery_timestamp,
+        "recovery_type": recovery_type,
+    }
+
+
+def build_simulation_context(hours):
+    """Pre-compute day groupings and recovery requirements for fast search."""
+
+    by_day = {}
+    for item in hours:
+        by_day.setdefault(item["day"], []).append(item)
+
+    return {
+        "hours_by_day": by_day,
+        "solar_only_cache": {},
+        "recovery": {
+            day: _recovery_requirement(hours, day)
+            for day in by_day
+        },
+    }
+
+
+def solar_only_5pm_energy(context, day, start_energy):
+    key = (day, round(float(start_energy), 4))
+    cache = context["solar_only_cache"]
+
+    if key not in cache:
+        cache[key] = _project_solar_only_to_5pm(
+            context["hours_by_day"].get(day, []),
+            start_energy,
+        )
+
+    return cache[key]
+
+
 def simulate(
     hours,
     start_energy,
     charges=None,
     exports=None,
+    context=None,
 ):
     """
     Multi-day battery/economic simulation.
@@ -278,6 +405,7 @@ def simulate(
 
     charges = charges or {}
     exports = exports or {}
+    context = context or build_simulation_context(hours)
 
     energy = float(start_energy)
 
@@ -302,8 +430,42 @@ def simulate(
 
         if day not in daily:
 
+            solar_only_5pm = solar_only_5pm_energy(
+                context,
+                day,
+                energy,
+            )
+            recovery = context["recovery"].get(
+                day,
+                {
+                    "required_energy": MIN_KWH,
+                    "forecast_draw": 0.0,
+                    "recovery_timestamp": None,
+                    "recovery_type": "FORECAST_HORIZON",
+                },
+            )
+            stored_shortfall = max(
+                0.0,
+                BATTERY_KWH - solar_only_5pm,
+            )
+            charge_cap_ac = (
+                stored_shortfall / CHARGE_EFF
+                if CHARGE_EFF > 0
+                else 0.0
+            )
+
             daily[day] = {
                 "start_energy": energy,
+                "solar_only_5pm_energy": solar_only_5pm,
+                "solar_only_5pm_soc": solar_only_5pm / BATTERY_KWH * 100.0,
+                "grid_charge_cap_ac": charge_cap_ac,
+                "required_post_export_energy": recovery["required_energy"],
+                "required_post_export_soc": (
+                    recovery["required_energy"] / BATTERY_KWH * 100.0
+                ),
+                "forecast_draw_to_recovery": recovery["forecast_draw"],
+                "next_recharge_timestamp": recovery["recovery_timestamp"],
+                "next_recharge_type": recovery["recovery_type"],
                 "solar": 0.0,
                 "solar_point": 0.0,
                 "load": 0.0,
@@ -323,6 +485,7 @@ def simulate(
                 "pre_shoulder_energy": None,
                 "post_shoulder_energy": None,
                 "pre_export_energy": None,
+                "post_export_energy": None,
                 "min_energy": energy,
                 "end_energy": energy,
             }
@@ -528,7 +691,11 @@ def simulate(
 
             actual_charge = min(
                 hourly_request,
-                max_ac_for_room
+                max_ac_for_room,
+                max(
+                    0.0,
+                    d["grid_charge_cap_ac"] - d["grid_charge"],
+                ),
             )
 
             stored = (
@@ -670,6 +837,12 @@ def simulate(
                     revenue
                 )
 
+        # State after the final premium-export hour.  This must retain enough
+        # battery for forecast household demand until useful solar or the next
+        # cheap 10AM shoulder window, plus the absolute FoxESS floor.
+        if hour == EXPORT_END - 1:
+            d["post_export_energy"] = energy
+
         # ==========================================
         # HOURLY SAFETY / DAILY STATE
         # ==========================================
@@ -785,13 +958,19 @@ def result_is_safe(
         ):
             return False
 
-        reserve_floor = (
-            MIN_KWH
-            + reserve_for_day(index)
+        # Forced export must leave the forecast energy needed from 9PM until
+        # the earlier of useful solar or next 10AM shoulder charging, including
+        # the absolute 10% FoxESS floor.  A no-export baseline is still allowed
+        # when the starting conditions make that target physically impossible.
+        post_export_energy = d.get("post_export_energy")
+        required_post_export = float(
+            d.get("required_post_export_energy", MIN_KWH)
         )
-
-        # Protect the battery at the end of every day.
-        if d["end_energy"] < reserve_floor:
+        if (
+            float(d.get("premium_export", 0.0)) > 0.05
+            and post_export_energy is not None
+            and post_export_energy < required_post_export - 0.05
+        ):
             return False
 
     # Extra protection at the forecast horizon edge.
@@ -815,6 +994,7 @@ def score_strategy(
     charges,
     exports,
     baseline_pre10=None,
+    context=None,
 ):
     """
     Score one complete multi-day strategy.
@@ -827,6 +1007,7 @@ def score_strategy(
         start_energy,
         charges=charges,
         exports=exports,
+        context=context,
     )
 
     if not result_is_safe(
@@ -848,6 +1029,7 @@ def optimise_export_only_baseline(
     start_energy,
     days,
     baseline_pre10,
+    context,
     max_passes=2,
 ):
     """Return a fair, safe export-planner style baseline.
@@ -867,6 +1049,7 @@ def optimise_export_only_baseline(
         charges,
         exports,
         baseline_pre10=baseline_pre10,
+        context=context,
     )
 
     if score is None:
@@ -895,6 +1078,7 @@ def optimise_export_only_baseline(
                     charges,
                     trial,
                     baseline_pre10=baseline_pre10,
+                    context=context,
                 )
 
                 if candidate_score is None:
@@ -937,6 +1121,7 @@ def optimise_horizon(
     """
 
     days = horizon_days(hours)
+    context = build_simulation_context(hours)
 
     charges = {
         day: 0.0
@@ -955,6 +1140,7 @@ def optimise_horizon(
         start_energy,
         charges=charges,
         exports=exports,
+        context=context,
     )
 
     baseline_pre10 = {
@@ -973,6 +1159,7 @@ def optimise_horizon(
             start_energy,
             days,
             baseline_pre10,
+            context,
         )
     )
 
@@ -1032,6 +1219,7 @@ def optimise_horizon(
                         trial_charges,
                         trial_exports,
                         baseline_pre10=baseline_pre10,
+                        context=context,
                     )
 
                     if score is None:
@@ -1100,6 +1288,7 @@ def optimise_horizon(
                             trial_charges,
                             trial_exports,
                             baseline_pre10=baseline_pre10,
+                            context=context,
                         )
                         if candidate_score is None or candidate_score <= best_score + 0.0001:
                             continue
@@ -1134,6 +1323,7 @@ def optimise_horizon(
             charges,
             exports,
             baseline_pre10=baseline_pre10,
+            context=context,
         )
     )
 

@@ -2113,7 +2113,7 @@ footer { color:#70879e; }
   .se-three-day-plan { display:grid;grid-template-columns:1fr; }
   .section-heading-row { align-items:flex-start;flex-direction:column; }
   .section-heading-note { text-align:left; }
-  .prediction-table-wrap table { min-width:1980px !important; }
+  .prediction-table-wrap table { min-width:2300px !important; }
 }
 
 /* Consistent light theme requested after visual review. */
@@ -2629,7 +2629,7 @@ footer { color:#63758a !important; }
     <table style="
         width:100%;
         border-collapse:collapse;
-        min-width:1980px;
+        min-width:2300px;
     ">
       <thead>
         <tr>
@@ -2642,7 +2642,10 @@ footer { color:#63758a !important; }
           <th>Import cost</th>
           <th>New export<br><small>5PM–9PM</small></th>
           <th>Battery at start</th>
+          <th>Solar-only at 5PM<br><small>no grid charge</small></th>
           <th>Battery at 5PM</th>
+          <th>Required after 9PM<br><small>until recharge</small></th>
+          <th>Next recharge<br><small>solar or 10AM</small></th>
           <th>Battery at midnight</th>
           <th>Before 10AM import<br><small>expensive grid</small></th>
           <th>FoxESS minimum</th>
@@ -2655,7 +2658,7 @@ footer { color:#63758a !important; }
 
       <tbody id="economicOptimizerBody">
         <tr>
-          <td colspan="17"
+          <td colspan="20"
               style="padding:18px;text-align:center">
             Loading prediction and automation evidence…
           </td>
@@ -4404,6 +4407,13 @@ async function updateEconomicOptimizer() {
           : exportKwh > 0
             ? "SOLAR EXPORT"
             : "HOLD";
+      const recharge = d.next_recharge_timestamp
+        ? new Date(d.next_recharge_timestamp).toLocaleString(undefined, {
+            weekday:"short", hour:"numeric", minute:"2-digit"
+          })
+        : "Forecast end";
+      const rechargeType = String(d.next_recharge_type || "FORECAST_HORIZON")
+        .replaceAll("_", " ").toLowerCase();
       const date = new Date(d.date + "T00:00:00");
       const dateLabel = `${index === 0 ? "Today · " : ""}${date.toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})}`;
 
@@ -4418,7 +4428,10 @@ async function updateEconomicOptimizer() {
           <td><span class="metric-main">$${Number(d.import_cost || 0).toFixed(2)}</span><span class="metric-sub">all planned imports</span></td>
           <td><span class="metric-main">${exportKwh.toFixed(1)} kWh</span><span class="metric-sub">${decision}</span></td>
           <td><span class="metric-main">${Number(d.battery_start_soc).toFixed(1)}%</span><span class="metric-sub">${Number(d.battery_start_kwh).toFixed(1)} kWh</span></td>
+          <td><span class="metric-main">${Number(d.solar_only_5pm_soc).toFixed(1)}%</span><span class="metric-sub">${Number(d.solar_only_5pm_kwh).toFixed(1)} kWh · no grid</span></td>
           <td><span class="metric-main">${Number(d.soc_5pm).toFixed(1)}%</span><span class="metric-sub">${Number(d.battery_5pm_kwh).toFixed(1)} kWh</span></td>
+          <td><span class="metric-main">${Number(d.required_reserve_soc).toFixed(1)}%</span><span class="metric-sub">${Number(d.required_reserve_kwh).toFixed(1)} kWh</span></td>
+          <td><span class="metric-main">${recharge}</span><span class="metric-sub">${rechargeType}</span></td>
           <td><span class="metric-main">${Number(d.end_soc).toFixed(1)}%</span><span class="metric-sub">${Number(d.battery_end_kwh).toFixed(1)} kWh</span></td>
           <td><span class="metric-main ${morningImport <= 0.05 ? "headroom-positive" : "headroom-negative"}">${morningImport.toFixed(1)} kWh</span><span class="metric-sub">forecast before cheap window</span></td>
           <td><span class="metric-main">${minSoc.toFixed(1)}%</span><span class="metric-sub">${minKwh.toFixed(1)} kWh</span></td>

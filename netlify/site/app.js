@@ -25,7 +25,7 @@ function showLocalPreview() {
     .map(label => `<article><span>${label}</span><strong>—</strong></article>`).join("");
   document.querySelector("#decision").textContent = "This local preview has no connection to your live energy data.";
   document.querySelector("#economics").innerHTML = "";
-  document.querySelector("#plan").innerHTML = `<tr><td colspan="17">Live seven-day data will appear here after deployment.</td></tr>`;
+  document.querySelector("#plan").innerHTML = `<tr><td colspan="20">Live seven-day data will appear here after deployment.</td></tr>`;
   document.querySelector("#ml-performance").textContent = "Live forecast validation appears after deployment.";
 }
 
@@ -56,6 +56,8 @@ function renderDecision(optimiser) {
       <div><span>Cheap energy bought</span><strong>${kwh(day.actual_simulated_charge_kwh)}</strong><small>10 AM–2 PM · shadow only</small></div>
       <div><span>Premium export</span><strong>${kwh(day.simulated_premium_export_kwh)}</strong><small>5 PM–9 PM · shadow only</small></div>
       <div><span>Battery at 5 PM</span><strong>${pct(day.soc_5pm, 1)}</strong><small>${kwh(day.battery_5pm_kwh)}</small></div>
+      <div><span>Solar-only at 5 PM</span><strong>${pct(day.solar_only_5pm_soc, 1)}</strong><small>${kwh(day.solar_only_5pm_kwh)} · no grid charging</small></div>
+      <div><span>Required after 9 PM</span><strong>${pct(day.required_reserve_soc, 1)}</strong><small>${kwh(day.required_reserve_kwh)} until recharge</small></div>
       <div><span>Battery at midnight</span><strong>${pct(day.end_soc, 1)}</strong><small>${kwh(day.battery_end_kwh)}</small></div>
     </div>
     <p class="reason"><strong>Why:</strong> ${esc(day.reason)}</p>
@@ -93,6 +95,13 @@ function renderPlan(optimiser, rulePlan) {
       const decision = charge > 0 && newExport > 0
         ? "BUY + EXPORT"
         : charge > 0 ? "BUY + HOLD" : newExport > 0 ? "SOLAR EXPORT" : "HOLD";
+      const recharge = day.next_recharge_timestamp
+        ? new Date(day.next_recharge_timestamp).toLocaleString(undefined, {
+            weekday: "short", hour: "numeric", minute: "2-digit"
+          })
+        : "Forecast end";
+      const rechargeType = String(day.next_recharge_type || "FORECAST_HORIZON")
+        .replaceAll("_", " ").toLowerCase();
       return `<tr class="${index === 0 ? "today-row" : ""}">
         <td class="date-cell"><strong>${index === 0 ? "Today · " : ""}${esc(day.date)}</strong><small>${esc(day.solar_basis || "")}</small></td>
         <td>${stack(kwh(day.solar_kwh), `protected ${kwh(day.protected_solar_kwh)}`)}</td>
@@ -103,7 +112,10 @@ function renderPlan(optimiser, rulePlan) {
         <td>${stack(money(day.import_cost), "all planned imports")}</td>
         <td>${stack(kwh(newExport), decision)}</td>
         <td>${battery(day.battery_start_kwh, day.battery_start_soc)}</td>
+        <td>${battery(day.solar_only_5pm_kwh, day.solar_only_5pm_soc)}</td>
         <td>${battery(day.battery_5pm_kwh, day.soc_5pm)}</td>
+        <td>${battery(day.required_reserve_kwh, day.required_reserve_soc)}</td>
+        <td>${stack(esc(recharge), esc(rechargeType))}</td>
         <td>${battery(day.battery_end_kwh, day.end_soc)}</td>
         <td class="${Number(day.pre_10am_import_kwh || 0) <= 0.05 ? "positive" : "negative"}">${stack(kwh(day.pre_10am_import_kwh), "forecast")}</td>
         <td>${battery(Number(optimiser.battery_capacity_kwh || 42) * Number(assumptions.battery_floor_percent || 10) / 100, assumptions.battery_floor_percent || 10)}</td>
@@ -114,7 +126,7 @@ function renderPlan(optimiser, rulePlan) {
       </tr>`;
     })()}
   `).join("");
-  document.querySelector("#assumptions").innerHTML = `<strong>Planning assumptions:</strong> ${num(assumptions.charge_efficiency_percent, 1)}% charge efficiency, ${num(assumptions.discharge_efficiency_percent, 1)}% discharge efficiency, ${num(assumptions.degradation_cents_per_battery_kwh, 1)}c battery-wear allowance per battery kWh, ${num(assumptions.solar_protection_percent, 0)}% protected solar, and ${num(assumptions.terminal_energy_value_cents_per_kwh, 1)}c/kWh retained-energy value.`;
+  document.querySelector("#assumptions").innerHTML = `<strong>Planning assumptions:</strong> ${num(assumptions.charge_efficiency_percent, 1)}% charge efficiency, ${num(assumptions.discharge_efficiency_percent, 1)}% discharge efficiency, ${num(assumptions.degradation_cents_per_battery_kwh, 1)}c battery-wear allowance per battery kWh, full ML solar forecast, 10% FoxESS battery floor, and ${num(assumptions.terminal_energy_value_cents_per_kwh, 1)}c/kWh retained-energy value.`;
 }
 
 function renderMl(performance) {

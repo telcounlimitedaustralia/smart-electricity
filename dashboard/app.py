@@ -740,6 +740,17 @@ def economic_optimizer():
             grid_charge_actual = float(d.get("grid_charge", 0))
             grid_stored = float(d.get("grid_stored", 0))
             premium_export_actual = float(d.get("premium_export", 0))
+            solar_only_5pm = float(
+                d.get("solar_only_5pm_energy", start_day_energy)
+            )
+            required_post_export = float(
+                d.get("required_post_export_energy", ECONOMIC_BATTERY_KWH * 0.10)
+            )
+            next_recharge_timestamp = d.get("next_recharge_timestamp")
+            next_recharge_type = d.get(
+                "next_recharge_type",
+                "FORECAST_HORIZON",
+            )
             export_battery_draw = float(
                 d.get("premium_export_battery_draw", 0)
             )
@@ -777,18 +788,22 @@ def economic_optimizer():
 
             if charge_kwh > 0 and export_kwh > 0:
                 action_reason = (
-                    "Buy cheap energy, export the profitable surplus, and "
-                    "retain the remainder for later load and reserve."
+                    f"Solar alone reaches {solar_only_5pm / ECONOMIC_BATTERY_KWH * 100:.0f}% "
+                    "at 5PM, so buy only the remaining profitable shortfall; "
+                    f"retain {required_post_export / ECONOMIC_BATTERY_KWH * 100:.0f}% "
+                    "after export for forecast demand."
                 )
             elif charge_kwh > 0:
                 action_reason = (
-                    "Buy cheap energy to avoid higher-cost later imports and "
-                    "protect the forecast reserve."
+                    f"Solar alone reaches {solar_only_5pm / ECONOMIC_BATTERY_KWH * 100:.0f}% "
+                    "at 5PM; buy only the battery shortfall needed to avoid "
+                    "higher-cost later imports and protect the forecast reserve."
                 )
             elif export_kwh > 0:
                 action_reason = (
-                    "Forecast surplus supports premium export after load, "
-                    "losses, and reserve protection."
+                    "Solar can supply the planned battery level without cheap "
+                    f"grid charging; export only above the {required_post_export / ECONOMIC_BATTERY_KWH * 100:.0f}% "
+                    "forecast reserve."
                 )
             elif next_solar is not None and next_solar >= 35:
                 action_reason = (
@@ -866,6 +881,34 @@ def economic_optimizer():
                     start_day_energy / ECONOMIC_BATTERY_KWH * 100,
                     1,
                 ),
+
+                "solar_only_5pm_kwh": round(solar_only_5pm, 2),
+
+                "solar_only_5pm_soc": round(
+                    solar_only_5pm / ECONOMIC_BATTERY_KWH * 100,
+                    1,
+                ),
+
+                "grid_charge_cap_kwh": round(
+                    d.get("grid_charge_cap_ac", 0),
+                    2,
+                ),
+
+                "required_reserve_kwh": round(required_post_export, 2),
+
+                "required_reserve_soc": round(
+                    required_post_export / ECONOMIC_BATTERY_KWH * 100,
+                    1,
+                ),
+
+                "forecast_draw_to_recharge_kwh": round(
+                    d.get("forecast_draw_to_recovery", 0),
+                    2,
+                ),
+
+                "next_recharge_timestamp": next_recharge_timestamp,
+
+                "next_recharge_type": next_recharge_type,
 
                 "baseline_export_kwh": round(
                     b.get("premium_export", 0),
@@ -998,11 +1041,15 @@ def economic_optimizer():
                     ),
 
                 "reason": (
-                    f"{action_reason} Protected case: "
-                    f"{confidence.lower()} confidence, load buffer "
-                    f"{float(load_buffer or 0):.1f} kWh and "
-                    f"{int(round((1.0 - SOLAR_PROTECTION_FACTOR) * 100))}% "
-                    "solar downside."
+                    f"{action_reason} Solar-first case: {confidence.lower()} "
+                    f"load confidence with {float(load_buffer or 0):.1f} kWh "
+                    f"forecast buffer. Next recharge: "
+                    f"{next_recharge_type.replace('_', ' ').lower()}"
+                    + (
+                        f" at {next_recharge_timestamp[11:16]}."
+                        if next_recharge_timestamp
+                        else "."
+                    )
                 ),
             })
 
