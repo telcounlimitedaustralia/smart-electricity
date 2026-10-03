@@ -4,8 +4,8 @@ Smart Electricity - Economic Optimiser V2
 Multi-day economic optimisation of:
 - ML household load
 - solar forecast
-- 10am-2pm shoulder grid charging
-- 5pm-9pm premium export
+- 10:05am-1:50pm shoulder grid charging
+- 5:05pm-8:50pm premium export
 - battery reserve
 
 SHADOW ONLY - NO FOXESS CONTROL.
@@ -46,6 +46,10 @@ EXPORT_START = 17
 EXPORT_END = 21
 
 ACTION_STEP_KWH = 1.0
+
+# Forecast and tariff inputs remain hourly. The live FoxESS periods leave a
+# boundary guard and therefore provide 3h45m of inverter capacity, not 4h.
+CONTROL_WINDOW_HOURS = 3.75
 
 # Shadow-planning assumptions. They are deliberately configurable and do not
 # affect the existing rule-based executor.
@@ -160,6 +164,11 @@ def candidate_values(maximum):
     while x <= maximum + 0.001:
         values.append(round(x, 2))
         x += ACTION_STEP_KWH
+
+    # Preserve the exact physical limit when it falls between the normal
+    # 1 kWh search increments (the guarded 3h45m window caps at 37.5 kWh).
+    if not values or values[-1] < maximum - 0.001:
+        values.append(round(maximum, 2))
 
     return values
 
@@ -1126,7 +1135,7 @@ def optimise_export_only_baseline(
         raise RuntimeError("No-action strategy fails reserve constraints")
 
     export_options = candidate_values(
-        MAX_EXPORT_KW * (EXPORT_END - EXPORT_START)
+        MAX_EXPORT_KW * CONTROL_WINDOW_HOURS
     )
 
     for _ in range(max_passes):
@@ -1239,19 +1248,11 @@ def optimise_horizon(
     best_score = baseline_score
 
     charge_options = candidate_values(
-        MAX_GRID_CHARGE_KW
-        * (
-            SHOULDER_END
-            - SHOULDER_START
-        )
+        MAX_GRID_CHARGE_KW * CONTROL_WINDOW_HOURS
     )
 
     export_options = candidate_values(
-        MAX_EXPORT_KW
-        * (
-            EXPORT_END
-            - EXPORT_START
-        )
+        MAX_EXPORT_KW * CONTROL_WINDOW_HOURS
     )
 
     for pass_number in range(
@@ -1337,8 +1338,8 @@ def optimise_horizon(
             round(min(maximum, value + 5.0), 2),
         })
 
-    max_charge = MAX_GRID_CHARGE_KW * (SHOULDER_END - SHOULDER_START)
-    max_export = MAX_EXPORT_KW * (EXPORT_END - EXPORT_START)
+    max_charge = MAX_GRID_CHARGE_KW * CONTROL_WINDOW_HOURS
+    max_export = MAX_EXPORT_KW * CONTROL_WINDOW_HOURS
     for first_day, second_day in zip(days, days[1:]):
         local_best = None
         for first_charge in nearby(charges[first_day], max_charge):

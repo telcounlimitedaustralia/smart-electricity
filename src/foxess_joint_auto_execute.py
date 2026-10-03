@@ -24,11 +24,14 @@ PLAN_MAX_AGE_MINUTES = 20
 SOC_MAX_AGE_MINUTES = 10
 VERIFY_ATTEMPTS = 4
 VERIFY_WAIT_SECONDS = 12
-MANAGED_SLOTS = {
-    (10, 0, 14, 0),
-    (17, 0, 21, 0),
-    (17, 5, 22, 55),
-}
+CHARGE_SLOT = (10, 5, 13, 50)
+EXPORT_SLOT = (17, 5, 20, 50)
+
+# Keep recognising every period previously owned by this project so an OFF
+# switch or watchdog can remove an obsolete schedule during migration.
+CHARGE_SLOTS = {CHARGE_SLOT, (10, 0, 14, 0)}
+EXPORT_SLOTS = {EXPORT_SLOT, (17, 0, 21, 0), (17, 5, 22, 55)}
+MANAGED_SLOTS = CHARGE_SLOTS | EXPORT_SLOTS
 
 
 def parse_timestamp(value):
@@ -143,9 +146,9 @@ def managed(group):
 def scope_managed(group, scope):
     current = slot(group)
     if scope == "charge":
-        return current == (10, 0, 14, 0)
+        return current in CHARGE_SLOTS
     if scope == "export":
-        return current in {(17, 0, 21, 0), (17, 5, 22, 55)}
+        return current in EXPORT_SLOTS
     return current in MANAGED_SLOTS
 
 
@@ -175,8 +178,8 @@ def desired_groups(existing, plan, phase, live_soc, enabled=True):
             extra = deepcopy(template)
             extra.update({"maxSoc": round(target, 1), "fdSoc": MIN_SOC})
             groups.append({
-                "startHour": 10, "startMinute": 0,
-                "endHour": 14, "endMinute": 0,
+                "startHour": CHARGE_SLOT[0], "startMinute": CHARGE_SLOT[1],
+                "endHour": CHARGE_SLOT[2], "endMinute": CHARGE_SLOT[3],
                 "workMode": "ForceCharge", "extraParam": extra,
             })
         return groups
@@ -190,8 +193,8 @@ def desired_groups(existing, plan, phase, live_soc, enabled=True):
         extra = deepcopy(template)
         extra.update({"fdSoc": cutoff, "maxSoc": 100.0})
         groups.append({
-            "startHour": 17, "startMinute": 0,
-            "endHour": 21, "endMinute": 0,
+            "startHour": EXPORT_SLOT[0], "startMinute": EXPORT_SLOT[1],
+            "endHour": EXPORT_SLOT[2], "endMinute": EXPORT_SLOT[3],
             "workMode": "ForceDischarge", "extraParam": extra,
         })
     return groups
@@ -300,6 +303,47 @@ def validate_device(device):
     return device_sn
 
 
+def schedule_notification(phase, plan, soc, outcome, groups, now):
+    """Describe the verified FoxESS result in customer-facing terms."""
+    if phase == "charge":
+        active = next((g for g in groups if scope_managed(g, "charge")), None)
+        if active:
+            headline = "IMPORT SCHEDULER SET AND VERIFIED"
+            decision = (
+                "Window: 10:05 AM-1:50 PM\n"
+                f"Planned cheap import: {float(plan['charge_kwh']):.1f} kWh\n"
+                f"Battery target: {float(plan['charge_target_soc']):.1f}%"
+            )
+        else:
+            headline = "IMPORT SCHEDULER NOT REQUIRED"
+            decision = "No FoxESS import period is active for today."
+    elif phase == "export":
+        active = next((g for g in groups if scope_managed(g, "export")), None)
+        if active:
+            cutoff = float(active.get("extraParam", {}).get("fdSoc", MIN_SOC))
+            headline = "EXPORT SCHEDULER SET AND VERIFIED"
+            decision = (
+                "Window: 5:05 PM-8:50 PM\n"
+                f"Planned premium export: {float(plan['export_kwh']):.1f} kWh\n"
+                f"Protected battery cutoff: {cutoff:.1f}%"
+            )
+        else:
+            headline = "EXPORT SCHEDULER NOT REQUIRED"
+            decision = "No FoxESS export period is active for today."
+    else:
+        headline = "DAILY SCHEDULE CLEANUP VERIFIED"
+        decision = "Managed import and export periods were removed after use."
+
+    return (
+        f"⚡ Smart Electricity - {headline}\n\n"
+        f"Date: {now.date().isoformat()}\n"
+        f"Live battery: {soc:.1f}%\n"
+        f"{decision}\n"
+        f"Result: {outcome}.\n\n"
+        "✅ FoxESS scheduler read-back verified."
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--phase", required=True, choices=("charge", "export", "watchdog"))
@@ -345,14 +389,7 @@ def main():
         f"backup={path or 'not needed'}"
     )
     record_event(now, args.phase, "VERIFIED", detail, plan)
-    notify(
-        "⚡ Smart Electricity - DAILY CONTROL VERIFIED\n\n"
-        f"Date: {now.date().isoformat()}\n"
-        f"Phase: {args.phase.upper()}\n"
-        f"Live battery: {soc:.1f}%\n"
-        f"Result: {outcome}.\n\n"
-        "✅ FoxESS scheduler read-back verified."
-    )
+    notify(schedule_notification(args.phase, plan, soc, outcome, groups, now))
     print(f"SUCCESS: {detail}")
 
 

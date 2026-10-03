@@ -6,6 +6,10 @@ import economic_optimizer_v2 as optimiser
 
 
 class JointOptimisationTests(unittest.TestCase):
+    def test_control_candidate_search_includes_exact_shortened_window_limit(self):
+        maximum = optimiser.MAX_GRID_CHARGE_KW * optimiser.CONTROL_WINDOW_HOURS
+        self.assertEqual(optimiser.candidate_values(maximum)[-1], 37.5)
+
     def test_manual_grid_charge_is_excluded_from_solar_only_replay(self):
         rows = [
             {

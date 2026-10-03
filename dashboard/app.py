@@ -1335,8 +1335,8 @@ def economic_optimizer():
             "tariffs": {
                 "shoulder_buy_cents": 11.11,
                 "premium_fit_cents": 28.0,
-                "shoulder_window": "10:00-14:00",
-                "premium_export_window": "17:00-21:00"
+                "shoulder_window": "10:05-13:50",
+                "premium_export_window": "17:05-20:50"
             },
 
             "starting_soc":
