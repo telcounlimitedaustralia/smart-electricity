@@ -17,6 +17,21 @@ const pct = (value, digits = 0) => value == null ? "—" : `${num(value, digits)
 const money = value => value == null ? "—" : `${Number(value) < 0 ? "−" : ""}$${Math.abs(Number(value)).toFixed(2)}`;
 const stack = (primary, secondary = "") => `<span class="metric"><strong>${primary}</strong>${secondary ? `<small>${secondary}</small>` : ""}</span>`;
 const battery = (kwhValue, percentValue) => stack(pct(percentValue, 1), kwh(kwhValue, 1));
+const friendlyDate = value => {
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime())
+    ? String(value || "")
+    : date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+};
+const friendlyBasis = value => {
+  const known = {
+    ACTUAL_SO_FAR_PLUS_REMAINING_FORECAST: "Actual so far + remaining forecast",
+    WEATHER_FORECAST: "Full-day weather forecast",
+    FULL_DAY_FORECAST: "Full-day forecast",
+  };
+  const raw = String(value || "");
+  return known[raw] || raw.replaceAll("_", " ").toLowerCase().replace(/^./, letter => letter.toUpperCase());
+};
 
 function showLocalPreview() {
   document.querySelector("#updated").textContent = "Local layout preview — live data loads after Netlify deployment.";
@@ -117,25 +132,25 @@ function renderPlan(optimiser, rulePlan) {
       const rechargeType = String(day.next_recharge_type || "FORECAST_HORIZON")
         .replaceAll("_", " ").toLowerCase();
       return `<tr class="${index === 0 ? "today-row" : ""}">
-        <td class="date-cell"><strong>${index === 0 ? "Today · " : ""}${esc(day.date)}</strong><small>${esc(day.solar_basis || "")}</small></td>
-        <td>${stack(kwh(day.solar_kwh), `protected ${kwh(day.protected_solar_kwh)}`)}</td>
-        <td>${stack(esc(old.solar_rating || "—"), esc(day.confidence || "—"))}</td>
-        <td>${stack(kwh(oldExport), old.export === "NO" ? "retain battery" : "rule plan")}</td>
-        <td>${stack(money(oldRevenue), "premium only")}</td>
-        <td>${stack(chargeDisplay, chargeDetail)}</td>
-        <td>${stack(money(day.import_cost), observedCharge >= 0.05 ? "observed + remaining plan" : "all planned imports")}</td>
-        <td>${stack(kwh(newExport), decision)}</td>
-        <td>${stack(pct(day.battery_start_soc, 1), index === 0 ? `${kwh(day.battery_start_kwh)} · live calculation start` : `${kwh(day.battery_start_kwh)} · simulated day start`)}</td>
-        <td>${stack(pct(day.solar_only_5pm_soc, 1), `${kwh(day.solar_only_5pm_kwh)} · excludes observed grid charge`)}</td>
-        <td>${battery(day.battery_5pm_kwh, day.soc_5pm)}</td>
-        <td>${battery(day.required_reserve_kwh, day.required_reserve_soc)}</td>
-        <td>${stack(esc(recharge), esc(rechargeType))}</td>
-        <td>${battery(day.battery_end_kwh, day.end_soc)}</td>
-        <td class="${Number(day.pre_10am_import_kwh || 0) <= 0.05 ? "positive" : "negative"}">${stack(kwh(day.pre_10am_import_kwh), "forecast")}</td>
-        <td>${battery(Number(optimiser.battery_capacity_kwh || 42) * Number(assumptions.battery_floor_percent || 10) / 100, assumptions.battery_floor_percent || 10)}</td>
-        <td>${stack(money(newRevenue), "premium only")}</td>
-        <td class="${uplift >= 0 ? "positive" : "negative"}">${stack(money(uplift), "premium revenue")}</td>
-        <td class="${Number(day.daily_improvement) >= 0 ? "positive" : "negative"}">${stack(money(day.daily_improvement), "vs fair no-charge baseline")}</td>
+        <td class="date-cell"><strong>${index === 0 ? "Today · " : ""}${esc(friendlyDate(day.date))}</strong><small>${esc(friendlyBasis(day.solar_basis))}</small></td>
+        <td class="cell-forecast">${stack(kwh(day.solar_kwh), `protected ${kwh(day.protected_solar_kwh)}`)}</td>
+        <td class="cell-forecast">${stack(esc(old.solar_rating || "—"), esc(day.confidence || "—"))}</td>
+        <td class="cell-rule">${stack(kwh(oldExport), old.export === "NO" ? "retain battery" : "rule plan")}</td>
+        <td class="cell-rule">${stack(money(oldRevenue), "premium only")}</td>
+        <td class="cell-shadow">${stack(chargeDisplay, chargeDetail)}</td>
+        <td class="cell-shadow">${stack(money(day.import_cost), observedCharge >= 0.05 ? "observed + remaining plan" : "all planned imports")}</td>
+        <td class="cell-shadow">${stack(kwh(newExport), decision)}</td>
+        <td class="cell-shadow">${stack(pct(day.battery_start_soc, 1), index === 0 ? `${kwh(day.battery_start_kwh)} · live calculation start` : `${kwh(day.battery_start_kwh)} · simulated day start`)}</td>
+        <td class="cell-shadow">${stack(pct(day.solar_only_5pm_soc, 1), `${kwh(day.solar_only_5pm_kwh)} · excludes observed grid charge`)}</td>
+        <td class="cell-shadow">${battery(day.battery_5pm_kwh, day.soc_5pm)}</td>
+        <td class="cell-shadow">${battery(day.required_reserve_kwh, day.required_reserve_soc)}</td>
+        <td class="cell-shadow">${stack(esc(recharge), esc(rechargeType))}</td>
+        <td class="cell-shadow">${battery(day.battery_end_kwh, day.end_soc)}</td>
+        <td class="cell-shadow ${Number(day.pre_10am_import_kwh || 0) <= 0.05 ? "positive" : "negative"}">${stack(kwh(day.pre_10am_import_kwh), "forecast")}</td>
+        <td class="cell-shadow">${battery(Number(optimiser.battery_capacity_kwh || 42) * Number(assumptions.battery_floor_percent || 10) / 100, assumptions.battery_floor_percent || 10)}</td>
+        <td class="cell-comparison">${stack(money(newRevenue), "premium only")}</td>
+        <td class="cell-comparison ${uplift >= 0 ? "positive" : "negative"}">${stack(money(uplift), "premium revenue")}</td>
+        <td class="cell-comparison ${Number(day.daily_improvement) >= 0 ? "positive" : "negative"}">${stack(money(day.daily_improvement), "vs fair no-charge baseline")}</td>
         <td class="reason-cell"><span class="confidence ${String(day.confidence || "").toLowerCase()}">${esc(decision)}</span>${esc(day.reason)}</td>
       </tr>`;
     })()}
