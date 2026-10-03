@@ -31,6 +31,14 @@ still present. Joint execution refuses a plan older than 20 minutes or an SOC
 reading older than 10 minutes, preserves unrelated schedule groups, verifies
 every write, and restores the original schedule if verification fails.
 
+Activation is deliberately fail-closed. From the VM, run
+`bash deployment/activate-joint-controller.sh`. It refuses tracked local
+changes, updates to the reviewed branch, runs the full tests, backs up the
+crontab and environment, creates a fresh plan, performs two no-write FoxESS
+dry runs, switches the exclusive controller mode, and installs the marked cron
+block. Use `bash deployment/rollback-joint-controller.sh` to clear owned
+schedule periods, restore rule ownership, and remove that cron block.
+
 ## Backup baseline
 
 Before migration, a compressed backup was written to `/home/kaji_islam/backups/smart-electricity-pre-migration-20261001.tar.gz`, SHA-256 `f7879ed4704a31ebdb538f6c4c36e6a547d297ef1117106819959b7d657227c3`.
