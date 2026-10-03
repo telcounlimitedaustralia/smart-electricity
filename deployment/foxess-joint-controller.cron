@@ -1,0 +1,17 @@
+# Install into the production user's crontab only after setting
+# FOXESS_CONTROL_MODE=joint in /home/kaji_islam/smart-electricity/.env.
+CRON_TZ=Australia/Sydney
+
+# Freeze the decision ten minutes before each control phase.
+45 9 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
+55 9 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/foxess_joint_auto_execute.py --phase charge >> logs/joint-controller.log 2>&1
+
+# Reconcile after the cheap-charge window; this writes no inverter settings.
+5 14 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
+
+# Refresh immediately before premium export, then apply the safe live-SOC cutoff.
+45 16 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
+55 16 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/foxess_joint_auto_execute.py --phase export >> logs/joint-controller.log 2>&1
+
+# Remove owned periods after the premium window and verify the clean schedule.
+5 21 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/foxess_joint_auto_execute.py --phase watchdog >> logs/joint-controller.log 2>&1

@@ -12,6 +12,25 @@
 | 17:00 | Rule-based FoxESS premium export executor | Active |
 | 09:55 / 16:55 | Joint optimiser cheap-charge / export executor | Paused |
 
+## Guarded joint-controller rollout
+
+The production sequence is defined in `deployment/foxess-joint-controller.cron`:
+
+| Time | Action |
+|---|---|
+| 09:45 | Freeze a fresh optimiser plan |
+| 09:55 | Apply or clear the 10:00-14:00 ForceCharge period |
+| 14:05 | Reconcile the forecast after the shoulder window; no control write |
+| 16:45 | Freeze a fresh plan using current SOC and forecast |
+| 16:55 | Apply or clear the 17:00-21:00 ForceDischarge period |
+| 21:05 | Remove controller-owned periods and verify the remaining schedule |
+
+Production writes require `FOXESS_CONTROL_MODE=joint`. In that mode the legacy
+rule executor exits successfully without writing, even if an old cron entry is
+still present. Joint execution refuses a plan older than 20 minutes or an SOC
+reading older than 10 minutes, preserves unrelated schedule groups, verifies
+every write, and restores the original schedule if verification fails.
+
 ## Backup baseline
 
 Before migration, a compressed backup was written to `/home/kaji_islam/backups/smart-electricity-pre-migration-20261001.tar.gz`, SHA-256 `f7879ed4704a31ebdb538f6c4c36e6a547d297ef1117106819959b7d657227c3`.

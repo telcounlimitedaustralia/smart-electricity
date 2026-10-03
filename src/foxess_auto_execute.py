@@ -277,6 +277,24 @@ def main():
 
     args = parser.parse_args()
 
+    control_mode = os.getenv(
+        "FOXESS_CONTROL_MODE",
+        "rule",
+    ).strip().lower()
+
+    if not args.dry_run and control_mode == "joint":
+        log(
+            "SKIP: joint controller owns FoxESS; "
+            "legacy rule executor will not write."
+        )
+        return
+
+    if not args.dry_run and control_mode != "rule":
+        raise RuntimeError(
+            "Invalid FOXESS_CONTROL_MODE: "
+            f"{control_mode!r}"
+        )
+
     now = datetime.now(TZ)
     today = now.date().isoformat()
 
