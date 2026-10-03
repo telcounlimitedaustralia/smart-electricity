@@ -24,6 +24,7 @@ PLAN_MAX_AGE_MINUTES = 20
 SOC_MAX_AGE_MINUTES = 10
 VERIFY_ATTEMPTS = 4
 VERIFY_WAIT_SECONDS = 12
+DB_BUSY_TIMEOUT_MS = 60000
 CHARGE_SLOT = (10, 5, 13, 50)
 EXPORT_SLOT = (17, 5, 20, 50)
 
@@ -52,7 +53,11 @@ def notify(message):
 
 
 def record_event(now, phase, status, detail, plan=None, db_path=DB):
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(
+        db_path,
+        timeout=DB_BUSY_TIMEOUT_MS / 1000.0,
+    )
+    conn.execute(f"PRAGMA busy_timeout = {DB_BUSY_TIMEOUT_MS}")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS automation_events (
             event_time TEXT NOT NULL,
@@ -76,7 +81,11 @@ def record_event(now, phase, status, detail, plan=None, db_path=DB):
 
 
 def latest_plan(now, db_path=DB):
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(
+        db_path,
+        timeout=DB_BUSY_TIMEOUT_MS / 1000.0,
+    )
+    conn.execute(f"PRAGMA busy_timeout = {DB_BUSY_TIMEOUT_MS}")
     conn.row_factory = sqlite3.Row
     row = conn.execute("""
         SELECT * FROM economic_plan_actions
@@ -95,7 +104,11 @@ def latest_plan(now, db_path=DB):
 
 
 def latest_soc(now, db_path=DB):
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(
+        db_path,
+        timeout=DB_BUSY_TIMEOUT_MS / 1000.0,
+    )
+    conn.execute(f"PRAGMA busy_timeout = {DB_BUSY_TIMEOUT_MS}")
     row = conn.execute("""
         SELECT timestamp, battery_soc FROM foxess_live
         WHERE battery_soc IS NOT NULL ORDER BY id DESC LIMIT 1
