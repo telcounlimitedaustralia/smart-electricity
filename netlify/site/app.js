@@ -17,6 +17,9 @@ const pct = (value, digits = 0) => value == null ? "—" : `${num(value, digits)
 const money = value => value == null ? "—" : `${Number(value) < 0 ? "−" : ""}$${Math.abs(Number(value)).toFixed(2)}`;
 const stack = (primary, secondary = "") => `<span class="metric"><strong>${primary}</strong>${secondary ? `<small>${secondary}</small>` : ""}</span>`;
 const battery = (kwhValue, percentValue) => stack(pct(percentValue, 1), kwh(kwhValue, 1));
+const energyAndPercent = (kwhValue, capacity = 42) => kwhValue == null
+  ? "—"
+  : `${kwh(kwhValue)} · ${pct(Number(kwhValue) / Number(capacity || 42) * 100, 1)}`;
 const friendlyDate = value => {
   const date = new Date(`${value}T12:00:00`);
   return Number.isNaN(date.getTime())
@@ -53,7 +56,7 @@ function renderCurrent(status, today, capacity) {
     ["Battery", pct(soc, 1), kwh(capacity * soc / 100, 1)],
     ["Today’s solar", kwh(today.pv_kwh), "gross PV produced"],
     ["Today’s home use", kwh(today.load_kwh), "household consumption"],
-    ["Grid import", kwh(today.import_kwh), "meter import"],
+    ["Grid import", energyAndPercent(today.import_kwh, capacity), "meter import · % of 42 kWh"],
   ];
   document.querySelector("#current").innerHTML = items.map(([label, value, detail]) => `
     <article><span>${label}</span><strong>${value}</strong><small>${detail}</small></article>
@@ -66,16 +69,17 @@ function renderDecision(optimiser) {
     document.querySelector("#decision").textContent = optimiser.error || "No plan is currently available.";
     return;
   }
+  const capacity = Number(optimiser.battery_capacity_kwh || 42);
   const observedCharge = Number(day.observed_grid_charge_kwh || 0);
   const plannedCharge = Number(day.actual_simulated_charge_kwh || 0);
   const observedCard = observedCharge >= 0.05
-    ? `<div><span>Grid charge already observed</span><strong>${kwh(observedCharge)}</strong><small>${kwh(day.observed_grid_stored_kwh)} stored · actual today</small></div>`
+    ? `<div><span>Grid charge already observed</span><strong>${energyAndPercent(observedCharge, capacity)}</strong><small>${energyAndPercent(day.observed_grid_stored_kwh, capacity)} stored · actual today</small></div>`
     : "";
   document.querySelector("#decision").innerHTML = `
     <div class="decision-grid">
       ${observedCard}
-      <div><span>${observedCharge >= 0.05 ? "Additional cheap charge" : "Cheap energy to buy"}</span><strong>${kwh(plannedCharge)}</strong><small>remaining shadow recommendation</small></div>
-      <div><span>Premium export</span><strong>${kwh(day.simulated_premium_export_kwh)}</strong><small>5 PM–9 PM · shadow only</small></div>
+      <div><span>${observedCharge >= 0.05 ? "Additional cheap charge" : "Cheap energy to buy"}</span><strong>${energyAndPercent(plannedCharge, capacity)}</strong><small>remaining recommendation · % of 42 kWh</small></div>
+      <div><span>Premium export</span><strong>${energyAndPercent(day.simulated_premium_export_kwh, capacity)}</strong><small>5 PM–9 PM · shadow only</small></div>
       <div><span>Battery at 5 PM</span><strong>${pct(day.soc_5pm, 1)}</strong><small>${kwh(day.battery_5pm_kwh)}</small></div>
       <div><span>Battery at 5 PM without today’s grid charge</span><strong>${pct(day.solar_only_5pm_soc, 1)}</strong><small>${kwh(day.solar_only_5pm_kwh)} · counterfactual</small></div>
       <div><span>Required after 9 PM</span><strong>${pct(day.required_reserve_soc, 1)}</strong><small>${kwh(day.required_reserve_kwh)} until recharge</small></div>
@@ -102,6 +106,7 @@ function renderEconomics(optimiser) {
 function renderPlan(optimiser, rulePlan) {
   const days = optimiser.days || [];
   const assumptions = optimiser.assumptions || {};
+  const capacity = Number(optimiser.battery_capacity_kwh || 42);
   const premiumRate = Number(optimiser.tariffs?.premium_fit_cents || 28);
   const ruleByDate = new Map((rulePlan.plans || []).map(day => [day.date, day]));
   document.querySelector("#plan").innerHTML = days.map((day, index) => `
@@ -116,11 +121,11 @@ function renderPlan(optimiser, rulePlan) {
       const observedCharge = Number(day.observed_grid_charge_kwh || 0);
       const totalCharge = charge + observedCharge;
       const chargeDisplay = observedCharge >= 0.05
-        ? `${kwh(observedCharge)} actual + ${kwh(charge)} remaining`
-        : kwh(charge);
+        ? `${energyAndPercent(observedCharge, capacity)} actual + ${energyAndPercent(charge, capacity)} remaining`
+        : energyAndPercent(charge, capacity);
       const chargeDetail = observedCharge >= 0.05
-        ? `${kwh(day.observed_grid_stored_kwh)} actually stored from grid`
-        : `${kwh(day.stored_from_grid_kwh)} planned stored`;
+        ? `${energyAndPercent(day.observed_grid_stored_kwh, capacity)} actually stored from grid`
+        : `${energyAndPercent(day.stored_from_grid_kwh, capacity)} planned stored`;
       const decision = totalCharge > 0 && newExport > 0
         ? "BUY + EXPORT"
         : totalCharge > 0 ? "BUY + HOLD" : newExport > 0 ? "SOLAR EXPORT" : "HOLD";
@@ -135,18 +140,18 @@ function renderPlan(optimiser, rulePlan) {
         <td class="date-cell"><strong>${index === 0 ? "Today · " : ""}${esc(friendlyDate(day.date))}</strong><small>${esc(friendlyBasis(day.solar_basis))}</small></td>
         <td class="cell-forecast">${stack(kwh(day.solar_kwh), `protected ${kwh(day.protected_solar_kwh)}`)}</td>
         <td class="cell-forecast">${stack(esc(old.solar_rating || "—"), esc(day.confidence || "—"))}</td>
-        <td class="cell-rule">${stack(kwh(oldExport), old.export === "NO" ? "retain battery" : "rule plan")}</td>
+        <td class="cell-rule">${stack(energyAndPercent(oldExport, capacity), old.export === "NO" ? "retain battery" : "rule plan")}</td>
         <td class="cell-rule">${stack(money(oldRevenue), "premium only")}</td>
         <td class="cell-shadow">${stack(chargeDisplay, chargeDetail)}</td>
         <td class="cell-shadow">${stack(money(day.import_cost), observedCharge >= 0.05 ? "observed + remaining plan" : "all planned imports")}</td>
-        <td class="cell-shadow">${stack(kwh(newExport), decision)}</td>
+        <td class="cell-shadow">${stack(energyAndPercent(newExport, capacity), decision)}</td>
         <td class="cell-shadow">${stack(pct(day.battery_start_soc, 1), index === 0 ? `${kwh(day.battery_start_kwh)} · live calculation start` : `${kwh(day.battery_start_kwh)} · simulated day start`)}</td>
         <td class="cell-shadow">${stack(pct(day.solar_only_5pm_soc, 1), `${kwh(day.solar_only_5pm_kwh)} · excludes observed grid charge`)}</td>
         <td class="cell-shadow">${battery(day.battery_5pm_kwh, day.soc_5pm)}</td>
         <td class="cell-shadow">${battery(day.required_reserve_kwh, day.required_reserve_soc)}</td>
         <td class="cell-shadow">${stack(esc(recharge), esc(rechargeType))}</td>
         <td class="cell-shadow">${battery(day.battery_end_kwh, day.end_soc)}</td>
-        <td class="cell-shadow ${Number(day.pre_10am_import_kwh || 0) <= 0.05 ? "positive" : "negative"}">${stack(kwh(day.pre_10am_import_kwh), "forecast")}</td>
+        <td class="cell-shadow ${Number(day.pre_10am_import_kwh || 0) <= 0.05 ? "positive" : "negative"}">${stack(energyAndPercent(day.pre_10am_import_kwh, capacity), "forecast")}</td>
         <td class="cell-shadow">${battery(Number(optimiser.battery_capacity_kwh || 42) * Number(assumptions.battery_floor_percent || 10) / 100, assumptions.battery_floor_percent || 10)}</td>
         <td class="cell-comparison">${stack(money(newRevenue), "premium only")}</td>
         <td class="cell-comparison ${uplift >= 0 ? "positive" : "negative"}">${stack(money(uplift), "premium revenue")}</td>
@@ -158,7 +163,7 @@ function renderPlan(optimiser, rulePlan) {
   document.querySelector("#assumptions").innerHTML = `<strong>Planning assumptions:</strong> ${num(assumptions.charge_efficiency_percent, 1)}% charge efficiency, ${num(assumptions.discharge_efficiency_percent, 1)}% discharge efficiency, ${num(assumptions.degradation_cents_per_battery_kwh, 1)}c battery-wear allowance per battery kWh, full ML solar forecast, 10% FoxESS battery floor, and ${num(assumptions.terminal_energy_value_cents_per_kwh, 1)}c/kWh retained-energy value.`;
 }
 
-function renderMl(performance) {
+function renderMl(performance, capacity = 42) {
   const target = document.querySelector("#ml-performance");
   if (!performance.available) {
     target.innerHTML = `<p class="empty">${esc(performance.reason || "No validated forecast days yet.")}</p>`;
@@ -205,10 +210,10 @@ function renderMl(performance) {
         <td><strong>${esc(row.date)}</strong><small class="coverage-note">${num(row.premium_window_coverage_hours, 1)}h premium data</small></td>
         <td>${pair(row.solar_forecast_kwh, row.solar_actual_kwh)}<small class="audit-error">Error ${errorText(row.solar_error_kwh)}</small></td>
         <td>${pair(row.load_forecast_kwh, row.load_actual_kwh)}<small class="audit-error">Error ${errorText(row.load_error_kwh)}</small><small class="coverage-note">Protected ${kwh(row.protected_load_kwh)}</small></td>
-        <td>${pair(row.premium_export_forecast_kwh, row.premium_export_actual_kwh)}<small class="audit-error">Error ${errorText(row.premium_export_error_kwh)}</small></td>
-        <td>${pair(row.grid_import_forecast_kwh, row.grid_import_actual_kwh)}<small class="audit-error">Error ${row.grid_import_forecast_kwh == null ? "not recorded" : errorText(row.grid_import_forecast_kwh - row.grid_import_actual_kwh)}</small></td>
+        <td>${pair(row.premium_export_forecast_kwh, row.premium_export_actual_kwh, value => energyAndPercent(value, capacity))}<small class="audit-error">Error ${errorText(row.premium_export_error_kwh, value => energyAndPercent(value, capacity))}</small></td>
+        <td>${pair(row.grid_import_forecast_kwh, row.grid_import_actual_kwh, value => energyAndPercent(value, capacity))}<small class="audit-error">Error ${row.grid_import_forecast_kwh == null ? "not recorded" : errorText(row.grid_import_forecast_kwh - row.grid_import_actual_kwh, value => energyAndPercent(value, capacity))}</small></td>
         <td>${pair(row.export_revenue_forecast, row.premium_revenue_actual, money)}<small class="audit-error">Error ${row.export_revenue_forecast == null || row.premium_revenue_actual == null ? "not recorded" : errorText(row.export_revenue_forecast - row.premium_revenue_actual, money)}</small></td>
-        <td>${stack(kwh(row.total_export_actual_kwh), `${money(row.total_export_revenue_actual)} revenue · ${money(row.net_value_actual)} net`)}</td>
+        <td>${stack(energyAndPercent(row.total_export_actual_kwh, capacity), `${money(row.total_export_revenue_actual)} revenue · ${money(row.net_value_actual)} net`)}</td>
       </tr>`).join("")}
     </tbody></table></div>
     <div class="audit-notes">
@@ -231,7 +236,7 @@ async function load() {
     renderDecision(optimiser);
     renderEconomics(optimiser);
     renderPlan(optimiser, rulePlan);
-    renderMl(performance);
+    renderMl(performance, capacity);
   } catch (error) {
     document.querySelector("#message").textContent = error.message;
   } finally {

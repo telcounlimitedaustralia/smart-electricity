@@ -71,18 +71,18 @@
               <tr class="column-row">
                 <th class="head-forecast">Solar forecast<br><small>gross / protected</small></th>
                 <th class="head-forecast">Rating<br><small>solar / confidence</small></th>
-                <th class="head-rule">Export<br><small>current rule · 5–9 PM</small></th>
+                <th class="head-rule">Export<br><small>kWh / battery % · 5–9 PM</small></th>
                 <th class="head-rule">Revenue<br><small>current rule</small></th>
-                <th class="head-shadow">Cheap import<br><small>10 AM–2 PM · bought / stored</small></th>
+                <th class="head-shadow">Cheap import<br><small>kWh / battery % · bought / stored</small></th>
                 <th class="head-shadow">Import cost</th>
-                <th class="head-shadow">Premium export<br><small>new plan · 5–9 PM</small></th>
+                <th class="head-shadow">Premium export<br><small>kWh / battery % · 5–9 PM</small></th>
                 <th class="head-shadow">Starting battery<br><small>when plan is calculated</small></th>
                 <th class="head-shadow">Solar-only battery<br><small>at 5 PM · no grid charge</small></th>
                 <th class="head-shadow">Battery at 5 PM<br><small>after cheap import</small></th>
                 <th class="head-shadow">Overnight reserve<br><small>needed after 9 PM</small></th>
                 <th class="head-shadow">Next recharge<br><small>solar or 10 AM</small></th>
                 <th class="head-shadow">Battery at midnight</th>
-                <th class="head-shadow">Expensive import<br><small>before 10 AM</small></th>
+                <th class="head-shadow">Expensive import<br><small>kWh / battery % · before 10 AM</small></th>
                 <th class="head-shadow">FoxESS minimum</th>
                 <th class="head-comparison">New revenue<br><small>premium export</small></th>
                 <th class="head-comparison">Revenue increase<br><small>new − current</small></th>
@@ -94,6 +94,7 @@
         </div>
         <div class="legend">
           <span><strong>Battery scale:</strong> 100% = 42.0 kWh; 1% = 0.42 kWh.</span>
+          <span><strong>Import/export percentage:</strong> AC energy divided by the 42 kWh battery capacity. It is an easy comparison scale, not the exact SOC change after conversion losses.</span>
           <span><strong>No-grid comparison:</strong> today’s manual or automated grid charging is measured from FoxESS telemetry and removed before estimating the 5 PM battery.</span>
           <span><strong>Solar-first rule:</strong> additional cheap charging can only close the remaining forecast gap to 100%; observed grid energy is not counted twice.</span>
           <span><strong>Required after 9 PM:</strong> 10% FoxESS minimum plus predicted household demand until useful solar or the next 10 AM shoulder window.</span>
