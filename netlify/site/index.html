@@ -68,8 +68,8 @@
                 <th>10 AM–2 PM import<br><small>bought / stored</small></th>
                 <th>Import cost</th>
                 <th>New export<br><small>5–9 PM</small></th>
-                <th>Battery at start</th>
-                <th>Solar-only at 5 PM<br><small>no grid charging</small></th>
+                <th>Battery when calculated<br><small>today: live SOC</small></th>
+                <th>Battery at 5 PM<br><small>without today’s grid charge</small></th>
                 <th>Battery at 5 PM</th>
                 <th>Required after 9 PM<br><small>until recharge</small></th>
                 <th>Next recharge<br><small>solar or 10 AM</small></th>
@@ -86,7 +86,8 @@
         </div>
         <div class="legend">
           <span><strong>Battery scale:</strong> 100% = 42.0 kWh; 1% = 0.42 kWh.</span>
-          <span><strong>Solar-first rule:</strong> cheap charging can only close the forecast gap between the solar-only 5 PM battery and 100%.</span>
+          <span><strong>No-grid comparison:</strong> today’s manual or automated grid charging is measured from FoxESS telemetry and removed before estimating the 5 PM battery.</span>
+          <span><strong>Solar-first rule:</strong> additional cheap charging can only close the remaining forecast gap to 100%; observed grid energy is not counted twice.</span>
           <span><strong>Required after 9 PM:</strong> 10% FoxESS minimum plus predicted household demand until useful solar or the next 10 AM shoulder window.</span>
           <span><strong>Old plan:</strong> the current rule-based seven-day forecast with no 10 AM–2 PM cheap charging.</span>
           <span><strong>Revenue uplift:</strong> new premium export revenue minus the current rule plan’s premium export revenue.</span>

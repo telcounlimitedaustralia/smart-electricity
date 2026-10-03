@@ -19,8 +19,14 @@ from ml_readiness import calculate as calculate_ml_readiness
 from ml_daily_performance import calculate as calculate_ml_performance
 from economic_optimizer_v2 import (
     build_hours as build_economic_hours,
+    build_simulation_context,
+    horizon_days,
     initial_energy as economic_initial_energy,
+    optimise_export_only_baseline,
     optimise_horizon,
+    replay_without_grid_charge,
+    simulate as simulate_economic,
+    solar_only_5pm_energy,
     BATTERY_KWH as ECONOMIC_BATTERY_KWH,
     CHARGE_EFF as ECONOMIC_CHARGE_EFF,
     DISCHARGE_EFF as ECONOMIC_DISCHARGE_EFF,
@@ -711,6 +717,26 @@ def economic_optimizer():
             FROM foxess_live
             WHERE substr(timestamp, 1, 10) = ?
         """, (today_string,)).fetchone()[0]
+        today_shoulder_rows = [
+            dict(row)
+            for row in actual_today_conn.execute("""
+                SELECT
+                    timestamp,
+                    battery_soc,
+                    pv_kw,
+                    load_kw,
+                    grid_import_kw,
+                    battery_charge_kw
+                FROM foxess_live
+                WHERE substr(timestamp, 1, 10) = ?
+                  AND CAST(substr(timestamp, 12, 2) AS INTEGER) >= 10
+                  AND CAST(substr(timestamp, 12, 2) AS INTEGER) < 17
+                ORDER BY timestamp
+            """, (today_string,)).fetchall()
+        ]
+        today_no_grid = replay_without_grid_charge(
+            today_shoulder_rows
+        )
         automation_table = actual_today_conn.execute("""
             SELECT COUNT(*) FROM sqlite_master
             WHERE type = 'table' AND name = 'automation_events'
@@ -726,6 +752,77 @@ def economic_optimizer():
             if event:
                 latest_automation = dict(event)
         actual_today_conn.close()
+
+        # Today's actual SOC may already include a manual 10AM-2PM grid
+        # charge.  Keep that real SOC for remaining operational decisions,
+        # but rebuild the no-charge baseline from measured PV and load so the
+        # manually imported energy is never mislabelled as solar.
+        observed_grid_charge_ac = float(
+            today_no_grid.get("grid_charge_ac", 0.0)
+        )
+        observed_grid_stored = float(
+            today_no_grid.get("grid_stored", 0.0)
+        )
+        observed_grid_cost = observed_grid_charge_ac * 11.11 / 100.0
+        counterfactual_start_energy = today_no_grid.get("energy")
+        simulation_context = build_simulation_context(hours)
+
+        if (
+            counterfactual_start_energy is not None
+            and observed_grid_charge_ac >= 0.05
+        ):
+            comparison_days = horizon_days(hours)
+            no_action_charges = {
+                comparison_day: 0.0
+                for comparison_day in comparison_days
+            }
+            no_action_exports = dict(no_action_charges)
+            no_action = simulate_economic(
+                hours,
+                float(counterfactual_start_energy),
+                charges=no_action_charges,
+                exports=no_action_exports,
+                context=simulation_context,
+            )
+            baseline_pre10 = {
+                comparison_day: float(
+                    no_action["daily"][comparison_day].get(
+                        "pre_10am_grid_import",
+                        0.0,
+                    )
+                )
+                for comparison_day in comparison_days
+            }
+            try:
+                (
+                    counterfactual_baseline_score,
+                    counterfactual_baseline,
+                    counterfactual_exports,
+                ) = optimise_export_only_baseline(
+                    hours,
+                    float(counterfactual_start_energy),
+                    comparison_days,
+                    baseline_pre10,
+                    simulation_context,
+                    max_passes=2,
+                )
+                result["baseline_score"] = counterfactual_baseline_score
+                result["baseline_result"] = counterfactual_baseline
+                result["baseline_exports"] = counterfactual_exports
+                result["baseline_type"] = (
+                    "COUNTERFACTUAL_EXPORT_ONLY_EXCLUDES_OBSERVED_GRID_CHARGE"
+                )
+                baseline = counterfactual_baseline
+            except RuntimeError:
+                # Preserve a transparent no-action counterfactual if the
+                # export-only strategy cannot meet the terminal reserve.
+                result["baseline_score"] = no_action["planning_value"]
+                result["baseline_result"] = no_action
+                result["baseline_exports"] = no_action_exports
+                result["baseline_type"] = (
+                    "COUNTERFACTUAL_NO_ACTION_EXCLUDES_OBSERVED_GRID_CHARGE"
+                )
+                baseline = no_action
 
         days = []
 
@@ -743,6 +840,17 @@ def economic_optimizer():
             solar_only_5pm = float(
                 d.get("solar_only_5pm_energy", start_day_energy)
             )
+            operational_solar_only_5pm = solar_only_5pm
+            if (
+                day == today_string
+                and counterfactual_start_energy is not None
+                and observed_grid_charge_ac >= 0.05
+            ):
+                solar_only_5pm = solar_only_5pm_energy(
+                    simulation_context,
+                    day,
+                    float(counterfactual_start_energy),
+                )
             required_post_export = float(
                 d.get("required_post_export_energy", ECONOMIC_BATTERY_KWH * 0.10)
             )
@@ -759,6 +867,11 @@ def economic_optimizer():
                 float(d.get("export_revenue", 0))
                 - float(d.get("import_cost", 0))
                 - daily_degradation
+                - (
+                    observed_grid_cost
+                    if day == today_string
+                    else 0.0
+                )
             )
             baseline_daily_value = (
                 float(b.get("export_revenue", 0))
@@ -786,7 +899,15 @@ def economic_optimizer():
                 next_day = result["days"][day_index + 1]
                 next_solar = final["daily"][next_day].get("solar", 0)
 
-            if charge_kwh > 0 and export_kwh > 0:
+            if day == today_string and observed_grid_charge_ac >= 0.05:
+                action_reason = (
+                    f"FoxESS observed {observed_grid_charge_ac:.2f} kWh of grid energy "
+                    f"used for battery charging today. Without that grid energy, "
+                    f"the battery is estimated to reach {solar_only_5pm / ECONOMIC_BATTERY_KWH * 100:.0f}% "
+                    "at 5PM. Remaining decisions use the actual live SOC, while "
+                    "the no-charge comparison excludes the manual import and its cost."
+                )
+            elif charge_kwh > 0 and export_kwh > 0:
                 action_reason = (
                     f"Solar alone reaches {solar_only_5pm / ECONOMIC_BATTERY_KWH * 100:.0f}% "
                     "at 5PM, so buy only the remaining profitable shortfall; "
@@ -887,6 +1008,38 @@ def economic_optimizer():
                 "solar_only_5pm_soc": round(
                     solar_only_5pm / ECONOMIC_BATTERY_KWH * 100,
                     1,
+                ),
+
+                "operational_solar_only_5pm_kwh": round(
+                    operational_solar_only_5pm,
+                    2,
+                ),
+
+                "observed_grid_charge_kwh": round(
+                    observed_grid_charge_ac
+                    if day == today_string
+                    else 0.0,
+                    2,
+                ),
+
+                "observed_grid_stored_kwh": round(
+                    observed_grid_stored
+                    if day == today_string
+                    else 0.0,
+                    2,
+                ),
+
+                "observed_grid_charge_cost": round(
+                    observed_grid_cost
+                    if day == today_string
+                    else 0.0,
+                    2,
+                ),
+
+                "solar_only_basis": (
+                    "COUNTERFACTUAL_EXCLUDES_OBSERVED_GRID_CHARGE"
+                    if day == today_string and observed_grid_charge_ac >= 0.05
+                    else "NO_PLANNED_GRID_CHARGE"
                 ),
 
                 "grid_charge_cap_kwh": round(
@@ -997,7 +1150,12 @@ def economic_optimizer():
 
                 "grid_import_kwh":
                     round(
-                        d.get("grid_import", 0),
+                        d.get("grid_import", 0)
+                        + (
+                            observed_grid_charge_ac
+                            if day == today_string
+                            else 0.0
+                        ),
                         2
                     ),
 
@@ -1008,7 +1166,12 @@ def economic_optimizer():
 
                 "import_cost":
                     round(
-                        d.get("import_cost", 0),
+                        d.get("import_cost", 0)
+                        + (
+                            observed_grid_cost
+                            if day == today_string
+                            else 0.0
+                        ),
                         2
                     ),
 
@@ -1059,9 +1222,12 @@ def economic_optimizer():
 
         optimised_value = float(
             result["final_score"]
-        )
+        ) - observed_grid_cost
         baseline_cash_value = float(baseline.get("net_value", 0))
-        optimised_cash_value = float(final.get("net_value", 0))
+        optimised_cash_value = (
+            float(final.get("net_value", 0))
+            - observed_grid_cost
+        )
         planning_improvement = optimised_value - baseline_value
         cash_improvement = optimised_cash_value - baseline_cash_value
 
@@ -1122,7 +1288,22 @@ def economic_optimizer():
                 ),
 
             "baseline_label":
-                "Export without cheap charging",
+                "Export without observed or planned cheap charging",
+
+            "observed_grid_charge_kwh": round(
+                observed_grid_charge_ac,
+                2,
+            ),
+
+            "observed_grid_stored_kwh": round(
+                observed_grid_stored,
+                2,
+            ),
+
+            "observed_grid_charge_cost": round(
+                observed_grid_cost,
+                2,
+            ),
 
             "optimised_value":
                 round(optimised_cash_value, 2),
@@ -1146,7 +1327,7 @@ def economic_optimizer():
                 round(
                     final.get(
                         "grid_charge", 0
-                    ),
+                    ) + observed_grid_charge_ac,
                     2
                 ),
 
@@ -1154,7 +1335,7 @@ def economic_optimizer():
                 round(
                     final.get(
                         "grid_import", 0
-                    ),
+                    ) + observed_grid_charge_ac,
                     2
                 ),
 

@@ -6,6 +6,56 @@ import economic_optimizer_v2 as optimiser
 
 
 class JointOptimisationTests(unittest.TestCase):
+    def test_manual_grid_charge_is_excluded_from_solar_only_replay(self):
+        rows = [
+            {
+                "timestamp": "2026-10-03T12:35:00+10:00",
+                "battery_soc": 68.0,
+                "pv_kw": 4.0,
+                "load_kw": 0.3,
+                "grid_import_kw": 6.0,
+                "battery_charge_kw": 10.0,
+            },
+            {
+                "timestamp": "2026-10-03T12:40:00+10:00",
+                # The real SOC includes the manual grid charge.  The replay
+                # must not use this later SOC as a new starting point.
+                "battery_soc": 72.0,
+                "pv_kw": 4.0,
+                "load_kw": 0.3,
+                "grid_import_kw": 6.0,
+                "battery_charge_kw": 10.0,
+            },
+        ]
+
+        result = optimiser.replay_without_grid_charge(rows)
+        expected_energy = (
+            optimiser.BATTERY_KWH * 0.68
+            + 2 * (4.0 - 0.3) / 12.0 * optimiser.CHARGE_EFF
+        )
+
+        self.assertTrue(result["available"])
+        self.assertAlmostEqual(result["energy"], expected_energy, places=4)
+        self.assertAlmostEqual(result["grid_charge_ac"], 1.0, places=4)
+        self.assertAlmostEqual(result["grid_stored"], 0.95, places=4)
+
+    def test_solar_only_replay_never_exceeds_battery_capacity(self):
+        rows = [
+            {
+                "timestamp": "2026-10-03T14:00:00+10:00",
+                "battery_soc": 99.0,
+                "pv_kw": 9.0,
+                "load_kw": 0.2,
+                "grid_import_kw": 0.0,
+                "battery_charge_kw": 8.8,
+            }
+        ]
+
+        result = optimiser.replay_without_grid_charge(rows)
+
+        self.assertEqual(result["energy"], optimiser.BATTERY_KWH)
+        self.assertEqual(result["grid_charge_ac"], 0.0)
+
     def test_grid_charge_is_zero_when_solar_alone_fills_battery(self):
         start = datetime(2026, 10, 3)
         hours = []

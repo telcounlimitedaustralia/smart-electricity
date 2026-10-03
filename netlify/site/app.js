@@ -51,12 +51,18 @@ function renderDecision(optimiser) {
     document.querySelector("#decision").textContent = optimiser.error || "No plan is currently available.";
     return;
   }
+  const observedCharge = Number(day.observed_grid_charge_kwh || 0);
+  const plannedCharge = Number(day.actual_simulated_charge_kwh || 0);
+  const observedCard = observedCharge >= 0.05
+    ? `<div><span>Grid charge already observed</span><strong>${kwh(observedCharge)}</strong><small>${kwh(day.observed_grid_stored_kwh)} stored · actual today</small></div>`
+    : "";
   document.querySelector("#decision").innerHTML = `
     <div class="decision-grid">
-      <div><span>Cheap energy bought</span><strong>${kwh(day.actual_simulated_charge_kwh)}</strong><small>10 AM–2 PM · shadow only</small></div>
+      ${observedCard}
+      <div><span>${observedCharge >= 0.05 ? "Additional cheap charge" : "Cheap energy to buy"}</span><strong>${kwh(plannedCharge)}</strong><small>remaining shadow recommendation</small></div>
       <div><span>Premium export</span><strong>${kwh(day.simulated_premium_export_kwh)}</strong><small>5 PM–9 PM · shadow only</small></div>
       <div><span>Battery at 5 PM</span><strong>${pct(day.soc_5pm, 1)}</strong><small>${kwh(day.battery_5pm_kwh)}</small></div>
-      <div><span>Solar-only at 5 PM</span><strong>${pct(day.solar_only_5pm_soc, 1)}</strong><small>${kwh(day.solar_only_5pm_kwh)} · no grid charging</small></div>
+      <div><span>Battery at 5 PM without today’s grid charge</span><strong>${pct(day.solar_only_5pm_soc, 1)}</strong><small>${kwh(day.solar_only_5pm_kwh)} · counterfactual</small></div>
       <div><span>Required after 9 PM</span><strong>${pct(day.required_reserve_soc, 1)}</strong><small>${kwh(day.required_reserve_kwh)} until recharge</small></div>
       <div><span>Battery at midnight</span><strong>${pct(day.end_soc, 1)}</strong><small>${kwh(day.battery_end_kwh)}</small></div>
     </div>
@@ -92,9 +98,17 @@ function renderPlan(optimiser, rulePlan) {
       const newRevenue = newExport * premiumRate / 100;
       const uplift = newRevenue - oldRevenue;
       const charge = Number(day.actual_simulated_charge_kwh ?? day.recommended_charge_kwh ?? 0);
-      const decision = charge > 0 && newExport > 0
+      const observedCharge = Number(day.observed_grid_charge_kwh || 0);
+      const totalCharge = charge + observedCharge;
+      const chargeDisplay = observedCharge >= 0.05
+        ? `${kwh(observedCharge)} actual + ${kwh(charge)} remaining`
+        : kwh(charge);
+      const chargeDetail = observedCharge >= 0.05
+        ? `${kwh(day.observed_grid_stored_kwh)} actually stored from grid`
+        : `${kwh(day.stored_from_grid_kwh)} planned stored`;
+      const decision = totalCharge > 0 && newExport > 0
         ? "BUY + EXPORT"
-        : charge > 0 ? "BUY + HOLD" : newExport > 0 ? "SOLAR EXPORT" : "HOLD";
+        : totalCharge > 0 ? "BUY + HOLD" : newExport > 0 ? "SOLAR EXPORT" : "HOLD";
       const recharge = day.next_recharge_timestamp
         ? new Date(day.next_recharge_timestamp).toLocaleString(undefined, {
             weekday: "short", hour: "numeric", minute: "2-digit"
@@ -108,11 +122,11 @@ function renderPlan(optimiser, rulePlan) {
         <td>${stack(esc(old.solar_rating || "—"), esc(day.confidence || "—"))}</td>
         <td>${stack(kwh(oldExport), old.export === "NO" ? "retain battery" : "rule plan")}</td>
         <td>${stack(money(oldRevenue), "premium only")}</td>
-        <td>${stack(kwh(charge), `${kwh(day.stored_from_grid_kwh)} stored`)}</td>
-        <td>${stack(money(day.import_cost), "all planned imports")}</td>
+        <td>${stack(chargeDisplay, chargeDetail)}</td>
+        <td>${stack(money(day.import_cost), observedCharge >= 0.05 ? "observed + remaining plan" : "all planned imports")}</td>
         <td>${stack(kwh(newExport), decision)}</td>
-        <td>${battery(day.battery_start_kwh, day.battery_start_soc)}</td>
-        <td>${battery(day.solar_only_5pm_kwh, day.solar_only_5pm_soc)}</td>
+        <td>${stack(pct(day.battery_start_soc, 1), index === 0 ? `${kwh(day.battery_start_kwh)} · live calculation start` : `${kwh(day.battery_start_kwh)} · simulated day start`)}</td>
+        <td>${stack(pct(day.solar_only_5pm_soc, 1), `${kwh(day.solar_only_5pm_kwh)} · excludes observed grid charge`)}</td>
         <td>${battery(day.battery_5pm_kwh, day.soc_5pm)}</td>
         <td>${battery(day.required_reserve_kwh, day.required_reserve_soc)}</td>
         <td>${stack(esc(recharge), esc(rechargeType))}</td>

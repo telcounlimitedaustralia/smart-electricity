@@ -75,6 +75,76 @@ TERMINAL_RESERVE_KWH = 8.0
 USEFUL_NET_SOLAR_KWH = 0.20
 
 
+def replay_without_grid_charge(rows, sample_hours=1.0 / 12.0):
+    """Reconstruct battery energy while excluding observed grid charging.
+
+    FoxESS live telemetry is sampled every five minutes.  The replay begins
+    with the first recorded SOC, then applies only measured PV and household
+    load.  Grid energy attributable to battery charging is measured separately
+    so a manual charge is never credited to solar in the counterfactual.
+    """
+
+    ordered = sorted(rows, key=lambda item: item["timestamp"])
+    if not ordered:
+        return {
+            "available": False,
+            "energy": None,
+            "grid_charge_ac": 0.0,
+            "grid_stored": 0.0,
+        }
+
+    energy = max(
+        MIN_KWH,
+        min(
+            BATTERY_KWH,
+            BATTERY_KWH * float(ordered[0]["battery_soc"]) / 100.0,
+        ),
+    )
+    grid_charge_ac = 0.0
+
+    for item in ordered:
+        pv_kw = max(0.0, float(item.get("pv_kw") or 0.0))
+        load_kw = max(0.0, float(item.get("load_kw") or 0.0))
+        grid_import_kw = max(
+            0.0,
+            float(item.get("grid_import_kw") or 0.0),
+        )
+        battery_charge_kw = max(
+            0.0,
+            float(item.get("battery_charge_kw") or 0.0),
+        )
+
+        net_solar_kw = pv_kw - load_kw
+        if net_solar_kw >= 0.0:
+            energy = min(
+                BATTERY_KWH,
+                energy + net_solar_kw * sample_hours * CHARGE_EFF,
+            )
+        else:
+            energy = max(
+                MIN_KWH,
+                energy + net_solar_kw * sample_hours / DISCHARGE_EFF,
+            )
+
+        # Remove household grid demand before attributing any import to the
+        # battery.  The battery-charge measurement provides a second cap.
+        household_grid_kw = max(0.0, load_kw - pv_kw)
+        grid_for_battery_kw = min(
+            battery_charge_kw,
+            max(0.0, grid_import_kw - household_grid_kw),
+        )
+        grid_charge_ac += grid_for_battery_kw * sample_hours
+
+    return {
+        "available": True,
+        "energy": energy,
+        "grid_charge_ac": grid_charge_ac,
+        "grid_stored": grid_charge_ac * CHARGE_EFF,
+        "start_soc": float(ordered[0]["battery_soc"]),
+        "samples": len(ordered),
+    }
+
+
 def reserve_for_day(day_index):
     return (
         BASE_RESERVE_KWH

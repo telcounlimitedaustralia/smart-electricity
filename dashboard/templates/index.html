@@ -2641,8 +2641,8 @@ footer { color:#63758a !important; }
           <th>10AM–2PM import<br><small>bought / stored</small></th>
           <th>Import cost</th>
           <th>New export<br><small>5PM–9PM</small></th>
-          <th>Battery at start</th>
-          <th>Solar-only at 5PM<br><small>no grid charge</small></th>
+          <th>Battery when calculated<br><small>today: live SOC</small></th>
+          <th>Battery at 5PM<br><small>without today’s grid charge</small></th>
           <th>Battery at 5PM</th>
           <th>Required after 9PM<br><small>until recharge</small></th>
           <th>Next recharge<br><small>solar or 10AM</small></th>
@@ -4376,9 +4376,11 @@ async function updateEconomicOptimizer() {
       document.getElementById("todayDecisionLoad").textContent =
         `${Number(todayDecision.ml_load_kwh || 0).toFixed(1)} kWh`;
       document.getElementById("todayDecisionCharge").textContent =
-        Number(todayDecision.recommended_charge_kwh || 0) > 0
-          ? `${Number(todayDecision.recommended_charge_kwh).toFixed(1)} kWh`
-          : "None";
+        Number(todayDecision.observed_grid_charge_kwh || 0) >= 0.05
+          ? `${Number(todayDecision.observed_grid_charge_kwh).toFixed(1)} kWh actual + ${Number(todayDecision.recommended_charge_kwh || 0).toFixed(1)} kWh remaining`
+          : Number(todayDecision.recommended_charge_kwh || 0) > 0
+            ? `${Number(todayDecision.recommended_charge_kwh).toFixed(1)} kWh`
+            : "None";
       document.getElementById("todayDecisionExport").textContent =
         Number(todayDecision.recommended_export_kwh || 0) > 0
           ? `${Number(todayDecision.recommended_export_kwh).toFixed(1)} kWh`
@@ -4391,6 +4393,9 @@ async function updateEconomicOptimizer() {
       const protectedSolar = Number(d.protected_solar_kwh || solar);
       const charge = Number(d.actual_simulated_charge_kwh ?? d.recommended_charge_kwh ?? 0);
       const stored = Number(d.stored_from_grid_kwh || 0);
+      const observedCharge = Number(d.observed_grid_charge_kwh || 0);
+      const observedStored = Number(d.observed_grid_stored_kwh || 0);
+      const totalCharge = charge + observedCharge;
       const exportKwh = Number(d.simulated_premium_export_kwh ?? d.recommended_export_kwh ?? 0);
       const oldExport = Number(old.recommended_export_kwh ?? d.baseline_export_kwh ?? 0);
       const oldRevenue = Number(old.potential_revenue ?? (oldExport * premiumRate / 100));
@@ -4400,9 +4405,9 @@ async function updateEconomicOptimizer() {
       const capacity = Number(data.battery_capacity_kwh || 42);
       const minSoc = Number(data.assumptions?.battery_floor_percent || 10);
       const minKwh = capacity * minSoc / 100;
-      const decision = charge > 0 && exportKwh > 0
+      const decision = totalCharge > 0 && exportKwh > 0
         ? "BUY + EXPORT"
-        : charge > 0
+        : totalCharge > 0
           ? "BUY + HOLD"
           : exportKwh > 0
             ? "SOLAR EXPORT"
@@ -4424,11 +4429,11 @@ async function updateEconomicOptimizer() {
           <td><span class="metric-main">${old.solar_rating || "—"}</span><span class="metric-sub">${d.confidence || "—"} confidence</span></td>
           <td><span class="metric-main">${oldExport.toFixed(1)} kWh</span><span class="metric-sub">existing rule plan</span></td>
           <td><span class="metric-main">$${oldRevenue.toFixed(2)}</span><span class="metric-sub">premium only</span></td>
-          <td><span class="metric-main">${charge > 0 ? charge.toFixed(1) + " kWh" : "None"}</span><span class="metric-sub">${stored.toFixed(1)} kWh stored</span></td>
-          <td><span class="metric-main">$${Number(d.import_cost || 0).toFixed(2)}</span><span class="metric-sub">all planned imports</span></td>
+          <td><span class="metric-main">${observedCharge >= 0.05 ? observedCharge.toFixed(1) + " kWh actual + " + charge.toFixed(1) + " kWh remaining" : charge > 0 ? charge.toFixed(1) + " kWh" : "None"}</span><span class="metric-sub">${observedCharge >= 0.05 ? observedStored.toFixed(1) + " kWh actually stored from grid" : stored.toFixed(1) + " kWh planned stored"}</span></td>
+          <td><span class="metric-main">$${Number(d.import_cost || 0).toFixed(2)}</span><span class="metric-sub">${observedCharge >= 0.05 ? "observed + remaining plan" : "all planned imports"}</span></td>
           <td><span class="metric-main">${exportKwh.toFixed(1)} kWh</span><span class="metric-sub">${decision}</span></td>
-          <td><span class="metric-main">${Number(d.battery_start_soc).toFixed(1)}%</span><span class="metric-sub">${Number(d.battery_start_kwh).toFixed(1)} kWh</span></td>
-          <td><span class="metric-main">${Number(d.solar_only_5pm_soc).toFixed(1)}%</span><span class="metric-sub">${Number(d.solar_only_5pm_kwh).toFixed(1)} kWh · no grid</span></td>
+          <td><span class="metric-main">${Number(d.battery_start_soc).toFixed(1)}%</span><span class="metric-sub">${Number(d.battery_start_kwh).toFixed(1)} kWh · ${index === 0 ? "live calculation start" : "simulated day start"}</span></td>
+          <td><span class="metric-main">${Number(d.solar_only_5pm_soc).toFixed(1)}%</span><span class="metric-sub">${Number(d.solar_only_5pm_kwh).toFixed(1)} kWh · excludes observed grid charge</span></td>
           <td><span class="metric-main">${Number(d.soc_5pm).toFixed(1)}%</span><span class="metric-sub">${Number(d.battery_5pm_kwh).toFixed(1)} kWh</span></td>
           <td><span class="metric-main">${Number(d.required_reserve_soc).toFixed(1)}%</span><span class="metric-sub">${Number(d.required_reserve_kwh).toFixed(1)} kWh</span></td>
           <td><span class="metric-main">${recharge}</span><span class="metric-sub">${rechargeType}</span></td>
