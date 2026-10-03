@@ -8,6 +8,16 @@ from zoneinfo import ZoneInfo
 DB = "data/energy.db"
 TZ = ZoneInfo("Australia/Sydney")
 VALID_SCOPES = {"master", "charge", "export"}
+DB_BUSY_TIMEOUT_MS = 30000
+
+
+def connect(db_path):
+    conn = sqlite3.connect(
+        str(db_path),
+        timeout=DB_BUSY_TIMEOUT_MS / 1000.0,
+    )
+    conn.execute(f"PRAGMA busy_timeout = {DB_BUSY_TIMEOUT_MS}")
+    return conn
 
 
 def ensure_schema(conn):
@@ -39,12 +49,33 @@ def ensure_schema(conn):
 
 
 def get_switches(db_path=DB):
-    conn = sqlite3.connect(str(db_path))
+    conn = connect(db_path)
     conn.row_factory = sqlite3.Row
-    ensure_schema(conn)
-    row = conn.execute("SELECT * FROM control_switches WHERE id = 1").fetchone()
-    conn.commit()
-    conn.close()
+    try:
+        # This is the hot path used by the controller and dashboard. Avoid the
+        # previous INSERT OR IGNORE on every read, which unnecessarily needed
+        # a write lock while the five-minute collector was storing telemetry.
+        try:
+            row = conn.execute(
+                "SELECT * FROM control_switches WHERE id = 1"
+            ).fetchone()
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc).lower():
+                raise
+            ensure_schema(conn)
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM control_switches WHERE id = 1"
+            ).fetchone()
+
+        if row is None:
+            ensure_schema(conn)
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM control_switches WHERE id = 1"
+            ).fetchone()
+    finally:
+        conn.close()
     return {
         "master_enabled": bool(row["master_enabled"]),
         "charge_enabled": bool(row["charge_enabled"]),
@@ -62,7 +93,7 @@ def set_switch(scope, enabled, actor="operator", detail="", db_path=DB, now=None
     now = now or datetime.now(TZ)
     stamp = now.isoformat(timespec="seconds")
     column = f"{scope}_enabled"
-    conn = sqlite3.connect(str(db_path))
+    conn = connect(db_path)
     ensure_schema(conn)
     conn.execute(
         f"UPDATE control_switches SET {column} = ?, updated_at = ?, updated_by = ? WHERE id = 1",

@@ -1,5 +1,7 @@
 import os
+import sqlite3
 import tempfile
+import time
 import unittest
 from datetime import datetime
 
@@ -39,6 +41,21 @@ class ControlSwitchTests(unittest.TestCase):
             set_switch("unknown", False, db_path=self.db_path)
         with self.assertRaises(ValueError):
             set_switch("charge", 1, db_path=self.db_path)
+
+    def test_read_does_not_request_write_lock_during_collector_transaction(self):
+        expected = set_all(True, "test", "enable", self.db_path)
+        writer = sqlite3.connect(self.db_path)
+        try:
+            writer.execute("BEGIN IMMEDIATE")
+            started = time.monotonic()
+            actual = get_switches(self.db_path)
+            elapsed = time.monotonic() - started
+        finally:
+            writer.rollback()
+            writer.close()
+
+        self.assertEqual(actual, expected)
+        self.assertLess(elapsed, 1.0)
 
 
 if __name__ == "__main__":
