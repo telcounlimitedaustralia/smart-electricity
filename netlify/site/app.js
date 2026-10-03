@@ -156,7 +156,12 @@ function renderPlan(optimiser, rulePlan) {
         <td class="cell-comparison">${stack(money(newRevenue), "premium only")}</td>
         <td class="cell-comparison ${uplift >= 0 ? "positive" : "negative"}">${stack(money(uplift), "premium revenue")}</td>
         <td class="cell-comparison ${Number(day.daily_improvement) >= 0 ? "positive" : "negative"}">${stack(money(day.daily_improvement), "vs fair no-charge baseline")}</td>
-        <td class="reason-cell"><span class="confidence ${String(day.confidence || "").toLowerCase()}">${esc(decision)}</span>${esc(day.reason)}</td>
+        <td class="info-cell">
+          <span class="info-wrap">
+            <button class="info-button" type="button" aria-label="${esc(`${decision}. ${day.reason}`)}" aria-describedby="reason-${index}">i</button>
+            <span class="reason-tooltip" id="reason-${index}" role="tooltip"><strong>${esc(decision)}</strong>${esc(day.reason)}</span>
+          </span>
+        </td>
       </tr>`;
     })()}
   `).join("");
