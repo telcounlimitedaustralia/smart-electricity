@@ -39,6 +39,12 @@ dry runs, switches the exclusive controller mode, and installs the marked cron
 block. Use `bash deployment/rollback-joint-controller.sh` to clear owned
 schedule periods, restore rule ownership, and remove that cron block.
 
+The authenticated VM dashboard exposes three audited operator switches: master,
+10:00-14:00 charge, and 17:00-21:00 export. OFF is immediate: the database gate
+is changed first, then the matching FoxESS schedule is removed and independently
+read back. ON permits only the next fresh scheduled decision; it never replays an
+old plan. The public Netlify dashboard remains read-only and has no control route.
+
 ## Backup baseline
 
 Before migration, a compressed backup was written to `/home/kaji_islam/backups/smart-electricity-pre-migration-20261001.tar.gz`, SHA-256 `f7879ed4704a31ebdb538f6c4c36e6a547d297ef1117106819959b7d657227c3`.

@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from foxess import foxess_post, get_device
 from telegram_notify import send_telegram
+from control_switches import get_switches, phase_enabled
 
 DB = "data/energy.db"
 TZ = ZoneInfo("Australia/Sydney")
@@ -139,6 +140,15 @@ def managed(group):
     return slot(group) in MANAGED_SLOTS
 
 
+def scope_managed(group, scope):
+    current = slot(group)
+    if scope == "charge":
+        return current == (10, 0, 14, 0)
+    if scope == "export":
+        return current in {(17, 0, 21, 0), (17, 5, 22, 55)}
+    return current in MANAGED_SLOTS
+
+
 def base_extra(groups):
     for group in groups:
         extra = group.get("extraParam")
@@ -151,10 +161,10 @@ def base_extra(groups):
     raise RuntimeError("No scheduler parameter template available")
 
 
-def desired_groups(existing, plan, phase, live_soc):
+def desired_groups(existing, plan, phase, live_soc, enabled=True):
     """Return the complete schedule, preserving all non-owned periods."""
     groups = [deepcopy(group) for group in existing if not managed(group)]
-    if phase == "watchdog":
+    if phase == "watchdog" or not enabled:
         return groups
 
     template = base_extra(existing)
@@ -269,6 +279,17 @@ def apply_schedule(device_sn, current_payload, existing, desired, now):
         ) from original_error
 
 
+def disable_scope(scope, now=None):
+    """Immediately remove one or all owned periods and verify FoxESS readback."""
+    if scope not in {"master", "charge", "export"}:
+        raise ValueError(f"Unknown control scope: {scope}")
+    now = now or datetime.now(TZ)
+    device_sn = validate_device(get_device())
+    current, existing = read_schedule(device_sn)
+    desired = [deepcopy(group) for group in existing if not scope_managed(group, scope)]
+    return apply_schedule(device_sn, current, existing, desired, now)
+
+
 def validate_device(device):
     device_sn = device.get("deviceSN")
     if not device_sn:
@@ -283,7 +304,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--phase", required=True, choices=("charge", "export", "watchdog"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--ignore-switches", action="store_true")
     args = parser.parse_args()
+    if args.ignore_switches and not args.dry_run:
+        raise RuntimeError("--ignore-switches is permitted only with --dry-run")
     now = datetime.now(TZ)
     plan = None if args.phase == "watchdog" else latest_plan(now)
     stamp, soc = latest_soc(now)
@@ -296,7 +320,9 @@ def main():
 
     device_sn = validate_device(get_device())
     current, existing = read_schedule(device_sn)
-    groups = desired_groups(existing, plan, args.phase, soc)
+    switches = get_switches(DB)
+    enabled = args.ignore_switches or phase_enabled(switches, args.phase)
+    groups = desired_groups(existing, plan, args.phase, soc, enabled=enabled)
     print(json.dumps({
         "phase": args.phase,
         "live_soc": soc,
@@ -306,6 +332,8 @@ def main():
         "export_kwh": None if plan is None else plan["export_kwh"],
         "managed_groups": [group for group in groups if managed(group)],
         "changed": group_signature(existing) != group_signature(groups),
+        "switches": switches,
+        "phase_enabled": enabled,
     }, indent=2))
     if args.dry_run:
         print("DRY RUN: no FoxESS write")

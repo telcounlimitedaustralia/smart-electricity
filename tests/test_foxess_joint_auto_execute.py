@@ -65,6 +65,12 @@ class JointControllerTests(unittest.TestCase):
         desired = controller.desired_groups(self.existing, plan(), "charge", 82.0)
         self.assertFalse(any(controller.managed(item) for item in desired))
 
+    def test_disabled_phase_removes_all_owned_periods(self):
+        desired = controller.desired_groups(
+            self.existing, plan(), "charge", 40.0, enabled=False
+        )
+        self.assertEqual(desired, [self.unmanaged])
+
     def test_export_cutoff_never_falls_below_protected_reserve(self):
         desired = controller.desired_groups(self.existing, plan(), "export", 90.0)
         export = next(item for item in desired if controller.managed(item))

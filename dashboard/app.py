@@ -1,13 +1,16 @@
 from flask import Flask, render_template, jsonify, request
+import os
 import sqlite3
 from pathlib import Path
 from datetime import datetime, timedelta
 import sys
 import time
 from threading import Lock
+from dotenv import load_dotenv
 
-BASE = Path.home() / "smart-electricity"
+BASE = Path(os.getenv("SMART_ELECTRICITY_HOME", Path.home() / "smart-electricity"))
 DB = BASE / "data" / "energy.db"
+load_dotenv(BASE / ".env")
 sys.path.insert(0, str(BASE / "src"))
 
 from tariff import rates_at
@@ -17,6 +20,7 @@ from load_predictor import predict_day as predict_load_day
 from ml_risk_analysis import calculate as calculate_ml_risk
 from ml_readiness import calculate as calculate_ml_readiness
 from ml_daily_performance import calculate as calculate_ml_performance
+from control_switches import get_switches, set_switch
 from economic_optimizer_v2 import (
     build_hours as build_economic_hours,
     build_simulation_context,
@@ -42,6 +46,75 @@ app = Flask(__name__)
 ECONOMIC_CACHE_SECONDS = 300
 economic_cache = {"created": 0.0, "payload": None}
 economic_cache_lock = Lock()
+
+
+@app.route("/api/control-switches")
+def control_switch_status():
+    state = get_switches(DB)
+    state["control_mode"] = os.getenv("FOXESS_CONTROL_MODE", "rule").strip().lower()
+    state["effective_charge_enabled"] = (
+        state["control_mode"] == "joint"
+        and state["master_enabled"]
+        and state["charge_enabled"]
+    )
+    state["effective_export_enabled"] = (
+        state["control_mode"] == "joint"
+        and state["master_enabled"]
+        and state["export_enabled"]
+    )
+    return jsonify(state)
+
+
+@app.route("/api/control-switch", methods=["POST"])
+def update_control_switch():
+    if request.headers.get("X-Requested-With") != "SmartElectricityDashboard":
+        return jsonify({"error": "Dashboard confirmation header required"}), 403
+    if not request.is_json:
+        return jsonify({"error": "JSON request required"}), 415
+
+    payload = request.get_json(silent=True) or {}
+    scope = payload.get("scope")
+    enabled = payload.get("enabled")
+    if scope not in {"master", "charge", "export"} or not isinstance(enabled, bool):
+        return jsonify({"error": "Invalid scheduler switch request"}), 400
+
+    control_mode = os.getenv("FOXESS_CONTROL_MODE", "rule").strip().lower()
+    if enabled and control_mode != "joint":
+        return jsonify({"error": "Joint controller is not active on this VM"}), 409
+
+    actor = "authenticated-dashboard"
+    state = set_switch(
+        scope,
+        enabled,
+        actor=actor,
+        detail="operator dashboard switch",
+        db_path=DB,
+    )
+    foxess_result = "enabled for the next fresh scheduled decision"
+
+    if not enabled:
+        try:
+            from foxess_joint_auto_execute import disable_scope, notify
+
+            outcome, backup_path = disable_scope(scope)
+            foxess_result = f"FoxESS schedule {outcome}"
+            notify(
+                "🛑 Smart Electricity - OPERATOR SWITCH OFF\n\n"
+                f"Scope: {scope.upper()}\n"
+                f"Result: {foxess_result}\n"
+                f"Backup: {backup_path or 'not required'}"
+            )
+        except Exception as exc:
+            return jsonify({
+                "error": (
+                    "Switch is OFF in the controller, but immediate FoxESS "
+                    f"schedule cleanup failed: {type(exc).__name__}: {exc}"
+                ),
+                "switches": state,
+            }), 502
+
+    state["control_mode"] = control_mode
+    return jsonify({"ok": True, "result": foxess_result, "switches": state})
 
 
 def db():
@@ -1231,18 +1304,31 @@ def economic_optimizer():
         planning_improvement = optimised_value - baseline_value
         cash_improvement = optimised_cash_value - baseline_cash_value
 
+        switches = get_switches(DB)
+        control_mode = os.getenv("FOXESS_CONTROL_MODE", "rule").strip().lower()
+        joint_live = control_mode == "joint"
+
         payload = {
             "available": True,
-            "mode": "JOINT_SHADOW_RULE_BASED_LIVE",
-            "control_enabled": False,
+            "mode": "JOINT_LIVE_GUARDED" if joint_live else "JOINT_SHADOW_RULE_BASED_LIVE",
+            "control_enabled": joint_live and switches["master_enabled"],
             "telegram_notifications": True,
             "automation": {
-                "control_strategy": "RULE_BASED",
-                "cheap_charge_enabled": False,
-                "premium_export_enabled": True,
-                "charge_run": None,
-                "snapshot_run": "16:55",
-                "export_run": "17:00",
+                "control_strategy": "JOINT_OPTIMISER" if joint_live else "RULE_BASED",
+                "cheap_charge_enabled": (
+                    joint_live
+                    and switches["master_enabled"]
+                    and switches["charge_enabled"]
+                ),
+                "premium_export_enabled": (
+                    joint_live
+                    and switches["master_enabled"]
+                    and switches["export_enabled"]
+                ),
+                "charge_run": "09:55" if joint_live else None,
+                "snapshot_run": "09:45 / 16:45" if joint_live else "16:55",
+                "export_run": "16:55" if joint_live else "17:00",
+                "switches": switches,
                 "latest_event": latest_automation,
             },
 

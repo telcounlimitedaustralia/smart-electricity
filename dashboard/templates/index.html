@@ -2213,9 +2213,37 @@ header h1,.eco-heading h2,.se-card-title,.section-heading-title,.forecast-date,h
 .forecast-warning { background:#f6f9fd !important;border-color:#cbd7e5 !important;color:#52677e !important; }
 .chartbox { border-top-color:#159bd7 !important; }
 footer { color:#63758a !important; }
+.controller-panel {
+  margin:0 0 14px;
+  padding:16px;
+  background:#ffffff;
+  border:1px solid #cbd7e5;
+  border-top:3px solid #159bd7;
+  border-radius:8px;
+  box-shadow:0 5px 18px rgba(38,61,88,.08);
+}
+.controller-heading { display:flex;justify-content:space-between;align-items:flex-start;gap:16px; }
+.controller-heading h2 { margin:3px 0 0;font-size:19px; }
+.controller-heading p { margin:4px 0 0;color:#63758a;font-size:12px; }
+.controller-mode { padding:6px 9px;border-radius:4px;background:#eaf6fd;color:#075f97;font-size:11px;font-weight:800; }
+.controller-switch-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:13px; }
+.controller-switch {
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:12px;background:#f8fbff;border:1px solid #cbd7e5;border-radius:6px;
+}
+.controller-switch strong { display:block;color:#172033;font-size:14px; }
+.controller-switch small { display:block;color:#63758a;margin-top:3px;line-height:1.35; }
+.controller-toggle { min-width:88px;border:0;border-radius:999px;padding:9px 12px;font-weight:850;cursor:pointer; }
+.controller-toggle.is-on { background:#dff5e9;color:#087a4b;box-shadow:inset 0 0 0 1px #8bc9a9; }
+.controller-toggle.is-off { background:#fee9e7;color:#b42318;box-shadow:inset 0 0 0 1px #e5aaa5; }
+.controller-toggle:disabled { opacity:.55;cursor:wait; }
+.controller-message { min-height:18px;margin:9px 0 0;color:#52677e;font-size:12px; }
+.controller-message.error { color:#b42318;font-weight:700; }
 @media (max-width:520px) {
   body { background:#f4f7fb !important; }
   .today-decision-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .controller-heading { flex-direction:column; }
+  .controller-switch-grid { grid-template-columns:1fr; }
 }
 </style>
 </head>
@@ -2235,6 +2263,32 @@ footer { color:#63758a !important; }
 <span class="subtitle" id="updated">Loading...</span>
 </div>
 </header>
+
+<section class="controller-panel" aria-labelledby="controllerHeading">
+  <div class="controller-heading">
+    <div>
+      <div class="panel-kicker">FOXESS AUTOMATION CONTROL</div>
+      <h2 id="controllerHeading">Emergency scheduler switches</h2>
+      <p>Switching OFF immediately removes that FoxESS schedule and verifies the change. Switching ON waits for the next fresh optimiser decision.</p>
+    </div>
+    <span class="controller-mode" id="controllerMode">LOADING</span>
+  </div>
+  <div class="controller-switch-grid">
+    <div class="controller-switch">
+      <div><strong>Master controller</strong><small>Stops both automation windows</small></div>
+      <button class="controller-toggle is-off" data-control-scope="master" aria-pressed="false" disabled>Loading</button>
+    </div>
+    <div class="controller-switch">
+      <div><strong>10 AM–2 PM import</strong><small>Cheap battery charging schedule</small></div>
+      <button class="controller-toggle is-off" data-control-scope="charge" aria-pressed="false" disabled>Loading</button>
+    </div>
+    <div class="controller-switch">
+      <div><strong>5 PM–9 PM export</strong><small>Premium battery export schedule</small></div>
+      <button class="controller-toggle is-off" data-control-scope="export" aria-pressed="false" disabled>Loading</button>
+    </div>
+  </div>
+  <p class="controller-message" id="controllerMessage" role="status"></p>
+</section>
 
 <section class="dashboard-top-grid">
 <div class="monitor-panel current-status-panel">
@@ -4969,9 +5023,94 @@ async function updateExportPlan() {
 }
 
 
+let controlSwitchState = null;
+
+function renderControlSwitches(state) {
+  controlSwitchState = state;
+  const jointLive = state.control_mode === "joint";
+  document.getElementById("controllerMode").textContent =
+    jointLive ? "JOINT CONTROLLER LIVE" : "JOINT CONTROLLER NOT ACTIVE";
+
+  document.querySelectorAll("[data-control-scope]").forEach(button => {
+    const scope = button.dataset.controlScope;
+    const configured = Boolean(state[`${scope}_enabled`]);
+    const effective = scope === "master"
+      ? jointLive && configured
+      : jointLive && state.master_enabled && configured;
+    button.disabled = false;
+    button.classList.toggle("is-on", configured);
+    button.classList.toggle("is-off", !configured);
+    button.setAttribute("aria-pressed", String(configured));
+    button.textContent = configured
+      ? (effective ? "ON" : "ON · STOPPED")
+      : "OFF";
+  });
+}
+
+async function updateControlSwitches() {
+  const message = document.getElementById("controllerMessage");
+  try {
+    const response = await fetch("/api/control-switches", {cache:"no-store"});
+    const state = await response.json();
+    if(!response.ok) throw new Error(state.error || "Unable to read controller switches");
+    renderControlSwitches(state);
+    message.classList.remove("error");
+    message.textContent = `Last operator change: ${new Date(state.updated_at).toLocaleString()} · ${state.updated_by}`;
+  } catch(error) {
+    message.classList.add("error");
+    message.textContent = error.message;
+  }
+}
+
+async function toggleControlSwitch(scope) {
+  if(!controlSwitchState) return;
+  const enabled = !Boolean(controlSwitchState[`${scope}_enabled`]);
+  const labels = {
+    master:"both import and export automation",
+    charge:"the 10 AM–2 PM import scheduler",
+    export:"the 5 PM–9 PM export scheduler"
+  };
+  const action = enabled ? "enable" : "STOP";
+  if(!window.confirm(`${action} ${labels[scope]}?`)) return;
+
+  const buttons = [...document.querySelectorAll("[data-control-scope]")];
+  const message = document.getElementById("controllerMessage");
+  buttons.forEach(button => button.disabled = true);
+  message.classList.remove("error");
+  message.textContent = enabled
+    ? "Saving switch. It will apply to the next fresh decision…"
+    : "Stopping schedule and verifying FoxESS readback…";
+
+  try {
+    const response = await fetch("/api/control-switch", {
+      method:"POST",
+      headers:{
+        "content-type":"application/json",
+        "X-Requested-With":"SmartElectricityDashboard"
+      },
+      body:JSON.stringify({scope, enabled})
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.error || "Control change failed");
+    message.textContent = data.result;
+    await updateControlSwitches();
+  } catch(error) {
+    message.classList.add("error");
+    message.textContent = error.message;
+    await updateControlSwitches();
+  } finally {
+    buttons.forEach(button => button.disabled = false);
+  }
+}
+
+document.querySelectorAll("[data-control-scope]").forEach(button => {
+  button.addEventListener("click", () => toggleControlSwitch(button.dataset.controlScope));
+});
+
 async function refresh() {
   try {
     await Promise.all([
+      updateControlSwitches(),
       updateStatus(),
       updateToday(),
       updateTomorrow(),
