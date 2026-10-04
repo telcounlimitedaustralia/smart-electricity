@@ -1,11 +1,26 @@
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import economic_optimizer_v2 as optimiser
 
 
 class JointOptimisationTests(unittest.TestCase):
+    def test_weather_filter_compares_naive_rows_in_sydney_time(self):
+        now = datetime(2026, 10, 5, 0, 41, tzinfo=optimiser.TZ)
+        connection = Mock()
+        rows = [
+            {"timestamp": "2026-10-05T00:00:00"},
+            {"timestamp": "2026-10-05T01:00:00"},
+        ]
+        with patch.object(optimiser, "connect", return_value=connection), patch.object(
+            optimiser, "forecast", return_value=rows
+        ):
+            selected = optimiser.weather_forecast(now=now)
+
+        self.assertEqual(selected, [rows[1]])
+        connection.close.assert_called_once_with()
+
     def test_load_forecast_horizon_uses_sydney_calendar_day(self):
         now = datetime(2026, 10, 5, 0, 41, tzinfo=optimiser.TZ)
         with patch.object(

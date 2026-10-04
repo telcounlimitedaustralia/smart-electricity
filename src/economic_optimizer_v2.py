@@ -233,6 +233,14 @@ def load_forecasts(now=None):
     return forecasts
 
 
+def local_timestamp(value):
+    """Interpret offset-free forecast timestamps as Sydney local time."""
+    stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if stamp.tzinfo is None:
+        return stamp.replace(tzinfo=TZ)
+    return stamp.astimezone(TZ)
+
+
 def weather_forecast(now=None):
     c = connect()
 
@@ -251,7 +259,7 @@ def weather_forecast(now=None):
 
     return [
         row for row in rows
-        if datetime.fromisoformat(row["timestamp"]) > current_hour
+        if local_timestamp(row["timestamp"]) > current_hour
     ]
 
 
