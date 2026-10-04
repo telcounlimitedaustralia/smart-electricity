@@ -29,8 +29,8 @@ chmod 600 "backups/env-before-joint-${timestamp}"
 # Build a fresh plan and prove that both phases can read the real inverter and
 # construct a schedule without transmitting a write.
 .venv/bin/python src/economic_plan_snapshot.py
-.venv/bin/python src/foxess_joint_auto_execute.py --phase charge --dry-run --ignore-switches
-.venv/bin/python src/foxess_joint_auto_execute.py --phase export --dry-run --ignore-switches
+.venv/bin/python src/foxess_joint_auto_execute.py --phase charge --dry-run --ignore-switches --use-latest-frozen-plan
+.venv/bin/python src/foxess_joint_auto_execute.py --phase export --dry-run --ignore-switches --use-latest-frozen-plan
 .venv/bin/python src/control_switches.py --all-on
 
 if grep -q '^FOXESS_CONTROL_MODE=' .env; then

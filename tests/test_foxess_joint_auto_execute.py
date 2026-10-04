@@ -149,6 +149,35 @@ class JointControllerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "SOC is stale"):
                 controller.latest_soc(now, db_path)
 
+    def test_deployment_dry_run_can_select_tomorrows_fresh_snapshot(self):
+        now = datetime(2026, 10, 4, 23, 35, tzinfo=controller.TZ)
+        with tempfile.TemporaryDirectory() as folder:
+            db_path = os.path.join(folder, "energy.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute("""
+                CREATE TABLE economic_plan_actions (
+                    plan_date TEXT, created_at TEXT, charge_kwh REAL
+                )
+            """)
+            conn.executemany(
+                "INSERT INTO economic_plan_actions VALUES (?, ?, ?)",
+                [
+                    ("2026-10-04", (now - timedelta(hours=7)).isoformat(), 0.0),
+                    ("2026-10-05", now.isoformat(), 19.0),
+                    ("2026-10-06", now.isoformat(), 5.0),
+                ],
+            )
+            conn.commit()
+            conn.close()
+
+            selected = controller.latest_plan(
+                now,
+                db_path,
+                use_latest_frozen=True,
+            )
+            self.assertEqual(selected["plan_date"], "2026-10-05")
+            self.assertEqual(selected["charge_kwh"], 19.0)
+
     def test_failed_verification_restores_original_schedule(self):
         desired = controller.desired_groups(self.existing, plan(), "charge", 40.0)
         now = datetime(2026, 10, 4, 9, 55, tzinfo=controller.TZ)

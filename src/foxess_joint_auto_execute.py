@@ -86,17 +86,29 @@ def record_event(now, phase, status, detail, plan=None, db_path=DB):
     conn.close()
 
 
-def latest_plan(now, db_path=DB):
+def latest_plan(now, db_path=DB, use_latest_frozen=False):
     conn = sqlite3.connect(
         db_path,
         timeout=DB_BUSY_TIMEOUT_MS / 1000.0,
     )
     conn.execute(f"PRAGMA busy_timeout = {DB_BUSY_TIMEOUT_MS}")
     conn.row_factory = sqlite3.Row
-    row = conn.execute("""
-        SELECT * FROM economic_plan_actions
-        WHERE plan_date = ? ORDER BY created_at DESC LIMIT 1
-    """, (now.date().isoformat(),)).fetchone()
+    if use_latest_frozen:
+        # Deployment dry-runs may occur late at night after the optimiser has
+        # rolled its planning horizon to tomorrow.  Select the first day from
+        # the newest snapshot; this mode is never permitted for a live write.
+        row = conn.execute("""
+            SELECT * FROM economic_plan_actions
+            WHERE created_at = (
+                SELECT MAX(created_at) FROM economic_plan_actions
+            )
+            ORDER BY plan_date ASC LIMIT 1
+        """).fetchone()
+    else:
+        row = conn.execute("""
+            SELECT * FROM economic_plan_actions
+            WHERE plan_date = ? ORDER BY created_at DESC LIMIT 1
+        """, (now.date().isoformat(),)).fetchone()
     conn.close()
     if not row:
         raise RuntimeError("No frozen joint plan for today")
@@ -398,11 +410,19 @@ def main():
     parser.add_argument("--phase", required=True, choices=("charge", "export", "watchdog"))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--ignore-switches", action="store_true")
+    parser.add_argument("--use-latest-frozen-plan", action="store_true")
     args = parser.parse_args()
     if args.ignore_switches and not args.dry_run:
         raise RuntimeError("--ignore-switches is permitted only with --dry-run")
+    if args.use_latest_frozen_plan and not args.dry_run:
+        raise RuntimeError(
+            "--use-latest-frozen-plan is permitted only with --dry-run"
+        )
     now = datetime.now(TZ)
-    plan = None if args.phase == "watchdog" else latest_plan(now)
+    plan = None if args.phase == "watchdog" else latest_plan(
+        now,
+        use_latest_frozen=args.use_latest_frozen_plan,
+    )
     stamp, soc = latest_soc(now)
 
     control_mode = os.getenv("FOXESS_CONTROL_MODE", "rule").strip().lower()
