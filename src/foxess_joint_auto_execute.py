@@ -338,13 +338,17 @@ def read_schedule(device_sn):
     if not response or response.get("errno") != 0:
         raise RuntimeError(f"Scheduler read failed: {response}")
     result = response.get("result") or {}
+    # FoxESS represents a successful clear (groups=[]) by disabling the
+    # scheduler.  Disabled means there are no active periods; stale groups in
+    # the response must not block cleanup verification or tomorrow's re-enable.
     if int(result.get("enable", 0)) != 1:
-        raise RuntimeError("FoxESS scheduler is disabled")
+        return response, []
     return response, result.get("groups") or []
 
 
 def verify_schedule(device_sn, expected, attempts=VERIFY_ATTEMPTS, wait=VERIFY_WAIT_SECONDS):
     expected_signature = group_signature(expected)
+    actual = []
     for attempt in range(attempts):
         if wait:
             time.sleep(wait)

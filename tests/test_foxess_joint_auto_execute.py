@@ -275,6 +275,24 @@ class JointControllerTests(unittest.TestCase):
 
         self.assertEqual(write.call_args.args[1], [])
 
+    def test_disabled_scheduler_is_a_verified_empty_schedule(self):
+        response = {
+            "errno": 0,
+            "result": {
+                "enable": 0,
+                "groups": [group(10, 14, "ForceCharge", 62.0)],
+            },
+        }
+        with patch.object(controller, "foxess_post", return_value=response):
+            payload, active = controller.read_schedule("device")
+            verified = controller.verify_schedule(
+                "device", [], attempts=1, wait=0
+            )
+
+        self.assertEqual(payload, response)
+        self.assertEqual(active, [])
+        self.assertEqual(verified, [])
+
     def test_schedule_verification_ignores_foxess_non_control_fields(self):
         expected = group(17, 21, "ForceDischarge", 45.0)
         actual = json.loads(json.dumps(expected))
