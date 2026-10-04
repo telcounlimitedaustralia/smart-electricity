@@ -162,7 +162,10 @@ class JointControllerTests(unittest.TestCase):
             conn.executemany(
                 "INSERT INTO economic_plan_actions VALUES (?, ?, ?)",
                 [
-                    ("2026-10-04", (now - timedelta(hours=7)).isoformat(), 0.0),
+                    # Deliberately use a lexically later timestamp string for
+                    # the old row. Selection must follow insertion order, not
+                    # MAX(timestamp text), during a no-write deployment check.
+                    ("2026-10-04", "2026-10-04T99:00:00+10:00", 0.0),
                     ("2026-10-05", now.isoformat(), 19.0),
                     ("2026-10-06", now.isoformat(), 5.0),
                 ],

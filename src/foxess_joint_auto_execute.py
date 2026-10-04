@@ -96,11 +96,13 @@ def latest_plan(now, db_path=DB, use_latest_frozen=False):
     if use_latest_frozen:
         # Deployment dry-runs may occur late at night after the optimiser has
         # rolled its planning horizon to tomorrow.  Select the first day from
-        # the newest snapshot; this mode is never permitted for a live write.
+        # the newest inserted snapshot; this mode is never permitted for a
+        # live write.  Row order avoids comparing mixed-offset timestamp text.
         row = conn.execute("""
             SELECT * FROM economic_plan_actions
             WHERE created_at = (
-                SELECT MAX(created_at) FROM economic_plan_actions
+                SELECT created_at FROM economic_plan_actions
+                ORDER BY rowid DESC LIMIT 1
             )
             ORDER BY plan_date ASC LIMIT 1
         """).fetchone()
@@ -113,6 +115,8 @@ def latest_plan(now, db_path=DB, use_latest_frozen=False):
     if not row:
         raise RuntimeError("No frozen joint plan for today")
     plan = dict(row)
+    if use_latest_frozen:
+        return plan
     age = age_minutes(now, plan["created_at"])
     if age < -2:
         raise RuntimeError("Joint plan timestamp is in the future")
