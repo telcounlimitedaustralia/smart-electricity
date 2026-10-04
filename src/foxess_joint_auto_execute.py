@@ -255,7 +255,12 @@ def desired_groups(existing, plan, phase, live_soc, enabled=True):
         target = max(MIN_SOC, min(100.0, target))
         if charge >= 0.5 and target > live_soc + 0.5:
             extra = deepcopy(template)
-            extra.update({"maxSoc": round(target, 1), "fdSoc": MIN_SOC})
+            # FoxESS labels fdSoc as the FC/FD cutoff in the app, while some
+            # inverter firmware enforces maxSoc during ForceCharge.  Set and
+            # verify both to the same target so the visible cutoff and the
+            # physical stopping limit cannot diverge.
+            target = round(target, 1)
+            extra.update({"maxSoc": target, "fdSoc": target})
             groups.append({
                 "startHour": CHARGE_SLOT[0], "startMinute": CHARGE_SLOT[1],
                 "endHour": CHARGE_SLOT[2], "endMinute": CHARGE_SLOT[3],
@@ -301,6 +306,7 @@ def group_signature(groups):
         }
         if mode == "ForceCharge":
             critical.update({
+                "fdSoc": number(extra.get("fdSoc")),
                 "maxSoc": number(extra.get("maxSoc")),
                 "secondWorkMode": str(extra.get("secondWorkMode") or ""),
             })
@@ -412,7 +418,7 @@ def schedule_notification(phase, plan, soc, outcome, groups, now):
     if phase == "charge":
         active = next((g for g in groups if scope_managed(g, "charge")), None)
         if active:
-            target = float(active.get("extraParam", {}).get("maxSoc", MIN_SOC))
+            target = float(active.get("extraParam", {}).get("fdSoc", MIN_SOC))
             headline = "IMPORT SCHEDULER SET AND VERIFIED"
             decision = (
                 "Window: 10:05 AM-1:55 PM\n"

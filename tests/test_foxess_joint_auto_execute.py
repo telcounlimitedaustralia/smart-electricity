@@ -60,6 +60,7 @@ class JointControllerTests(unittest.TestCase):
         self.assertEqual(controller.slot(managed[0]), (10, 5, 13, 55))
         self.assertEqual(managed[0]["workMode"], "ForceCharge")
         self.assertEqual(managed[0]["extraParam"]["maxSoc"], 62.6)
+        self.assertEqual(managed[0]["extraParam"]["fdSoc"], 62.6)
 
     def test_all_day_self_use_fallback_is_never_sent_with_charge(self):
         fallback = group(0, 23, "SelfUse")
@@ -91,6 +92,7 @@ class JointControllerTests(unittest.TestCase):
         desired = controller.desired_groups(self.existing, plan(), "charge", 23.0)
         charge = next(item for item in desired if controller.managed(item))
         self.assertEqual(charge["extraParam"]["maxSoc"], 45.6)
+        self.assertEqual(charge["extraParam"]["fdSoc"], 45.6)
 
     def test_charge_is_not_armed_when_optimizer_requests_no_import(self):
         desired = controller.desired_groups(
@@ -287,6 +289,19 @@ class JointControllerTests(unittest.TestCase):
         expected = group(17, 21, "ForceDischarge", 45.0)
         actual = json.loads(json.dumps(expected))
         actual["extraParam"]["fdSoc"] = 44.0
+        self.assertNotEqual(
+            controller.group_signature([expected]),
+            controller.group_signature([actual]),
+        )
+
+    def test_charge_verification_requires_visible_and_firmware_cutoffs(self):
+        expected = group(10, 13, "ForceCharge", 62.7)
+        expected["startMinute"] = 5
+        expected["endMinute"] = 55
+        expected["extraParam"]["maxSoc"] = 62.7
+        actual = json.loads(json.dumps(expected))
+        actual["extraParam"]["fdSoc"] = 10.0
+
         self.assertNotEqual(
             controller.group_signature([expected]),
             controller.group_signature([actual]),
