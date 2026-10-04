@@ -5,7 +5,7 @@ Forecasting, battery planning, and FoxESS export control for a residential solar
 ## Safety status
 
 - **The guarded joint economic optimiser is the live control path.** It applies
-  verified 10:05-13:50 import and 17:05-20:50 export decisions, with audited
+  verified 10:05-13:55 import and 17:05-20:55 export decisions, with audited
   dashboard switches and Telegram confirmation.
 - **The legacy rule executor remains installed for rollback but is write-blocked**
   while `FOXESS_CONTROL_MODE=joint`.

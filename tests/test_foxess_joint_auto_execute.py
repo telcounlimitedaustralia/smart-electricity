@@ -57,7 +57,7 @@ class JointControllerTests(unittest.TestCase):
         self.assertEqual(desired[0], self.unmanaged)
         managed = [item for item in desired if controller.managed(item)]
         self.assertEqual(len(managed), 1)
-        self.assertEqual(controller.slot(managed[0]), (10, 5, 13, 50))
+        self.assertEqual(controller.slot(managed[0]), (10, 5, 13, 55))
         self.assertEqual(managed[0]["workMode"], "ForceCharge")
         self.assertEqual(managed[0]["extraParam"]["maxSoc"], 80.0)
 
@@ -74,7 +74,7 @@ class JointControllerTests(unittest.TestCase):
     def test_export_cutoff_never_falls_below_protected_reserve(self):
         desired = controller.desired_groups(self.existing, plan(), "export", 90.0)
         export = next(item for item in desired if controller.managed(item))
-        self.assertEqual(controller.slot(export), (17, 5, 20, 50))
+        self.assertEqual(controller.slot(export), (17, 5, 20, 55))
         self.assertEqual(export["workMode"], "ForceDischarge")
         self.assertGreaterEqual(export["extraParam"]["fdSoc"], 45.0)
 
@@ -107,7 +107,7 @@ class JointControllerTests(unittest.TestCase):
             "charge", plan(), 40.0, "written and verified", charge_groups, now
         )
         self.assertIn("IMPORT SCHEDULER SET AND VERIFIED", message)
-        self.assertIn("10:05 AM-1:50 PM", message)
+        self.assertIn("10:05 AM-1:55 PM", message)
         self.assertIn("10.0 kWh", message)
 
     def test_stale_plan_and_stale_soc_are_rejected(self):

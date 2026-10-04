@@ -19,11 +19,11 @@ The production sequence is defined in `deployment/foxess-joint-controller.cron`:
 | Time | Action |
 |---|---|
 | 09:45 | Freeze a fresh optimiser plan |
-| 09:55 | Apply or clear the 10:05-13:50 ForceCharge period; notify Telegram after verified read-back |
-| 13:55 | Reconcile the forecast after the shoulder window; no control write |
+| 09:55 | Apply or clear the 10:05-13:55 ForceCharge period; notify Telegram after verified read-back |
+| 14:00 | Reconcile the forecast after the shoulder window; no control write |
 | 16:45 | Freeze a fresh plan using current SOC and forecast |
-| 16:55 | Apply or clear the 17:05-20:50 ForceDischarge period; notify Telegram after verified read-back |
-| 20:55 | Remove controller-owned periods and verify the remaining schedule |
+| 16:55 | Apply or clear the 17:05-20:55 ForceDischarge period; notify Telegram after verified read-back |
+| 21:00 | Remove controller-owned periods and verify the remaining schedule |
 
 Production writes require `FOXESS_CONTROL_MODE=joint`. In that mode the legacy
 rule executor exits successfully without writing, even if an old cron entry is
@@ -40,7 +40,7 @@ block. Use `bash deployment/rollback-joint-controller.sh` to clear owned
 schedule periods, restore rule ownership, and remove that cron block.
 
 The authenticated VM dashboard exposes three audited operator switches: master,
-10:05-13:50 charge, and 17:05-20:50 export. OFF is immediate: the database gate
+10:05-13:55 charge, and 17:05-20:55 export. OFF is immediate: the database gate
 is changed first, then the matching FoxESS schedule is removed and independently
 read back. ON permits only the next fresh scheduled decision; it never replays an
 old plan. The public Netlify dashboard remains read-only and has no control route.

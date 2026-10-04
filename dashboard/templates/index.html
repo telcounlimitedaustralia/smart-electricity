@@ -2279,11 +2279,11 @@ footer { color:#63758a !important; }
       <button class="controller-toggle is-off" data-control-scope="master" aria-pressed="false" disabled>Loading</button>
     </div>
     <div class="controller-switch">
-      <div><strong>10:05 AM–1:50 PM import</strong><small>Cheap battery charging schedule</small></div>
+      <div><strong>10:05 AM–1:55 PM import</strong><small>Cheap battery charging schedule</small></div>
       <button class="controller-toggle is-off" data-control-scope="charge" aria-pressed="false" disabled>Loading</button>
     </div>
     <div class="controller-switch">
-      <div><strong>5:05 PM–8:50 PM export</strong><small>Premium battery export schedule</small></div>
+      <div><strong>5:05 PM–8:55 PM export</strong><small>Premium battery export schedule</small></div>
       <button class="controller-toggle is-off" data-control-scope="export" aria-pressed="false" disabled>Loading</button>
     </div>
   </div>
@@ -5067,8 +5067,8 @@ async function toggleControlSwitch(scope) {
   const enabled = !Boolean(controlSwitchState[`${scope}_enabled`]);
   const labels = {
     master:"both import and export automation",
-    charge:"the 10:05 AM–1:50 PM import scheduler",
-    export:"the 5:05 PM–8:50 PM export scheduler"
+    charge:"the 10:05 AM–1:55 PM import scheduler",
+    export:"the 5:05 PM–8:55 PM export scheduler"
   };
   const action = enabled ? "enable" : "STOP";
   if(!window.confirm(`${action} ${labels[scope]}?`)) return;

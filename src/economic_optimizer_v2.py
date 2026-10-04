@@ -4,8 +4,8 @@ Smart Electricity - Economic Optimiser V2
 Multi-day economic optimisation of:
 - ML household load
 - solar forecast
-- 10:05am-1:50pm shoulder grid charging
-- 5:05pm-8:50pm premium export
+- 10:05am-1:55pm shoulder grid charging
+- 5:05pm-8:55pm premium export
 - battery reserve
 
 SHADOW ONLY - NO FOXESS CONTROL.
@@ -48,8 +48,8 @@ EXPORT_END = 21
 ACTION_STEP_KWH = 1.0
 
 # Forecast and tariff inputs remain hourly. The live FoxESS periods leave a
-# boundary guard and therefore provide 3h45m of inverter capacity, not 4h.
-CONTROL_WINDOW_HOURS = 3.75
+# boundary guard and therefore provide 3h50m of inverter capacity, not 4h.
+CONTROL_WINDOW_HOURS = 3.0 + 50.0 / 60.0
 
 # Shadow-planning assumptions. They are deliberately configurable and do not
 # affect the existing rule-based executor.
@@ -166,7 +166,7 @@ def candidate_values(maximum):
         x += ACTION_STEP_KWH
 
     # Preserve the exact physical limit when it falls between the normal
-    # 1 kWh search increments (the guarded 3h45m window caps at 37.5 kWh).
+    # 1 kWh search increments (the guarded 3h50m window caps at 38.33 kWh).
     if not values or values[-1] < maximum - 0.001:
         values.append(round(maximum, 2))
 

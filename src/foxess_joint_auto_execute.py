@@ -25,13 +25,18 @@ SOC_MAX_AGE_MINUTES = 10
 VERIFY_ATTEMPTS = 4
 VERIFY_WAIT_SECONDS = 12
 DB_BUSY_TIMEOUT_MS = 60000
-CHARGE_SLOT = (10, 5, 13, 50)
-EXPORT_SLOT = (17, 5, 20, 50)
+CHARGE_SLOT = (10, 5, 13, 55)
+EXPORT_SLOT = (17, 5, 20, 55)
 
 # Keep recognising every period previously owned by this project so an OFF
 # switch or watchdog can remove an obsolete schedule during migration.
-CHARGE_SLOTS = {CHARGE_SLOT, (10, 0, 14, 0)}
-EXPORT_SLOTS = {EXPORT_SLOT, (17, 0, 21, 0), (17, 5, 22, 55)}
+CHARGE_SLOTS = {CHARGE_SLOT, (10, 5, 13, 50), (10, 0, 14, 0)}
+EXPORT_SLOTS = {
+    EXPORT_SLOT,
+    (17, 5, 20, 50),
+    (17, 0, 21, 0),
+    (17, 5, 22, 55),
+}
 MANAGED_SLOTS = CHARGE_SLOTS | EXPORT_SLOTS
 
 
@@ -323,7 +328,7 @@ def schedule_notification(phase, plan, soc, outcome, groups, now):
         if active:
             headline = "IMPORT SCHEDULER SET AND VERIFIED"
             decision = (
-                "Window: 10:05 AM-1:50 PM\n"
+                "Window: 10:05 AM-1:55 PM\n"
                 f"Planned cheap import: {float(plan['charge_kwh']):.1f} kWh\n"
                 f"Battery target: {float(plan['charge_target_soc']):.1f}%"
             )
@@ -336,7 +341,7 @@ def schedule_notification(phase, plan, soc, outcome, groups, now):
             cutoff = float(active.get("extraParam", {}).get("fdSoc", MIN_SOC))
             headline = "EXPORT SCHEDULER SET AND VERIFIED"
             decision = (
-                "Window: 5:05 PM-8:50 PM\n"
+                "Window: 5:05 PM-8:55 PM\n"
                 f"Planned premium export: {float(plan['export_kwh']):.1f} kWh\n"
                 f"Protected battery cutoff: {cutoff:.1f}%"
             )
