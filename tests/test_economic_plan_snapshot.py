@@ -4,11 +4,19 @@ import tempfile
 import threading
 import time
 import unittest
+from datetime import datetime
+from unittest.mock import patch
 
 import economic_plan_snapshot as snapshot
 
 
 class EconomicPlanSnapshotTests(unittest.TestCase):
+    def test_empty_forecast_is_not_reported_as_a_frozen_plan(self):
+        now = datetime(2026, 10, 5, 0, 41, tzinfo=snapshot.TZ)
+        with patch.object(snapshot.optimiser, "build_hours", return_value=([], {})):
+            with self.assertRaisesRegex(RuntimeError, "no joint plan was saved"):
+                snapshot.build_plan(now=now)
+
     def test_plan_write_waits_for_brief_collector_lock(self):
         with tempfile.TemporaryDirectory() as folder:
             db_path = os.path.join(folder, "energy.db")

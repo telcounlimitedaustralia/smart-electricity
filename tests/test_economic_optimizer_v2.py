@@ -6,6 +6,17 @@ import economic_optimizer_v2 as optimiser
 
 
 class JointOptimisationTests(unittest.TestCase):
+    def test_load_forecast_horizon_uses_sydney_calendar_day(self):
+        now = datetime(2026, 10, 5, 0, 41, tzinfo=optimiser.TZ)
+        with patch.object(
+            optimiser,
+            "forecast_days",
+            return_value={"forecast_days": []},
+        ) as forecast:
+            optimiser.load_forecasts(now=now)
+
+        self.assertEqual(forecast.call_args.kwargs["start_day"], now.date())
+
     def test_control_candidate_search_includes_exact_shortened_window_limit(self):
         maximum = optimiser.MAX_GRID_CHARGE_KW * optimiser.CONTROL_WINDOW_HOURS
         self.assertEqual(optimiser.candidate_values(maximum)[-1], 38.33)

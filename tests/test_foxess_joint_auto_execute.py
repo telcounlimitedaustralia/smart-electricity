@@ -207,6 +207,31 @@ class JointControllerTests(unittest.TestCase):
             self.assertEqual(selected["plan_date"], "2026-10-05")
             self.assertEqual(selected["charge_kwh"], 19.0)
 
+    def test_live_selection_uses_newest_inserted_plan_for_today(self):
+        now = datetime(2026, 10, 5, 0, 42, tzinfo=controller.TZ)
+        with tempfile.TemporaryDirectory() as folder:
+            db_path = os.path.join(folder, "energy.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute("""
+                CREATE TABLE economic_plan_actions (
+                    plan_date TEXT, created_at TEXT, charge_kwh REAL
+                )
+            """)
+            conn.executemany(
+                "INSERT INTO economic_plan_actions VALUES (?, ?, ?)",
+                [
+                    ("2026-10-05", "2026-10-05T99:00:00+11:00", 1.0),
+                    ("2026-10-05", now.isoformat(), 19.0),
+                ],
+            )
+            conn.commit()
+            conn.close()
+
+            selected = controller.latest_plan(now, db_path)
+
+            self.assertEqual(selected["created_at"], now.isoformat())
+            self.assertEqual(selected["charge_kwh"], 19.0)
+
     def test_failed_verification_restores_original_schedule(self):
         desired = controller.desired_groups(self.existing, plan(), "charge", 40.0)
         now = datetime(2026, 10, 4, 9, 55, tzinfo=controller.TZ)

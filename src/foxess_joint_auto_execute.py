@@ -109,7 +109,7 @@ def latest_plan(now, db_path=DB, use_latest_frozen=False):
     else:
         row = conn.execute("""
             SELECT * FROM economic_plan_actions
-            WHERE plan_date = ? ORDER BY created_at DESC LIMIT 1
+            WHERE plan_date = ? ORDER BY rowid DESC LIMIT 1
         """, (now.date().isoformat(),)).fetchone()
     conn.close()
     if not row:

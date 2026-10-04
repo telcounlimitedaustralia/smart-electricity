@@ -14,6 +14,7 @@ SHADOW ONLY - NO FOXESS CONTROL.
 import os
 import sys
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, "src")
 
@@ -29,6 +30,7 @@ from tariff import import_rate, export_rate
 
 
 BATTERY_KWH = 42.0
+TZ = ZoneInfo("Australia/Sydney")
 
 MIN_SOC = 10.0
 MIN_KWH = BATTERY_KWH * MIN_SOC / 100.0
@@ -173,7 +175,7 @@ def candidate_values(maximum):
     return values
 
 
-def load_forecasts():
+def load_forecasts(now=None):
     """
     Convert recursive forward ML output into:
         date -> hourly load + uncertainty metadata
@@ -184,7 +186,8 @@ def load_forecasts():
     # This is important just after midnight: today's completed
     # predecessor can come from yesterday's foxess_live data,
     # then future days can be recursively predicted from today.
-    start_day = datetime.now().date()
+    now = now or datetime.now(TZ)
+    start_day = now.astimezone(TZ).date()
 
     result = forecast_days(
         start_day=start_day,
@@ -230,7 +233,7 @@ def load_forecasts():
     return forecasts
 
 
-def weather_forecast():
+def weather_forecast(now=None):
     c = connect()
 
     rows = forecast(c)
@@ -239,7 +242,8 @@ def weather_forecast():
 
     # The initial battery energy is a live state. Exclude the current,
     # partially elapsed hour so its solar and load are not simulated twice.
-    current_hour = datetime.now().replace(
+    now = now or datetime.now(TZ)
+    current_hour = now.astimezone(TZ).replace(
         minute=0,
         second=0,
         microsecond=0,
@@ -251,13 +255,14 @@ def weather_forecast():
     ]
 
 
-def build_hours():
+def build_hours(now=None):
     """
     Join solar/weather forecast with hourly ML load.
     """
 
-    ml = load_forecasts()
-    weather = weather_forecast()
+    now = now or datetime.now(TZ)
+    ml = load_forecasts(now=now)
+    weather = weather_forecast(now=now)
 
     hours = []
 

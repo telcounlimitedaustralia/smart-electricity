@@ -69,10 +69,14 @@ def ensure_schema(conn):
 
 def build_plan(now=None):
     now = now or datetime.now(TZ)
-    hours, ml = optimiser.build_hours()
+    hours, ml = optimiser.build_hours(now=now)
+    if not hours:
+        raise RuntimeError(
+            "No joined solar/load forecast hours; no joint plan was saved"
+        )
     start_energy, start_soc = optimiser.initial_energy()
     result = optimiser.optimise_horizon(hours, start_energy)
-    if result["final_score"] is None:
+    if result["final_score"] is None or not result.get("days"):
         raise RuntimeError("No safe joint strategy found")
 
     created = now.isoformat(timespec="seconds")
