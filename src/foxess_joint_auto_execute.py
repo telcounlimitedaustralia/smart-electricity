@@ -19,6 +19,7 @@ GET_PATH = "/op/v3/device/scheduler/get"
 WRITE_PATH = "/op/v3/device/scheduler/enable"
 MIN_SOC = 10.0
 BATTERY_KWH = 42.0
+CHARGE_EFFICIENCY = 0.95
 DISCHARGE_EFFICIENCY = 0.95
 PLAN_MAX_AGE_MINUTES = 20
 SOC_MAX_AGE_MINUTES = 10
@@ -191,7 +192,13 @@ def desired_groups(existing, plan, phase, live_soc, enabled=True):
     template = base_extra(existing)
     if phase == "charge":
         charge = float(plan["charge_kwh"])
-        target = max(MIN_SOC, min(100.0, float(plan["charge_target_soc"])))
+        # The optimiser chooses meter-side AC kWh, while FoxESS accepts only
+        # an SOC cutoff.  Convert from the live SOC immediately before the
+        # window; do not use the simulated afternoon SOC, which also includes
+        # forecast solar and household load.
+        stored_from_grid = max(0.0, charge) * CHARGE_EFFICIENCY
+        target = live_soc + stored_from_grid / BATTERY_KWH * 100.0
+        target = max(MIN_SOC, min(100.0, target))
         if charge >= 0.5 and target > live_soc + 0.5:
             extra = deepcopy(template)
             extra.update({"maxSoc": round(target, 1), "fdSoc": MIN_SOC})
@@ -219,22 +226,42 @@ def desired_groups(existing, plan, phase, live_soc, enabled=True):
 
 
 def group_signature(groups):
-    """Stable comparison tolerant of FoxESS group ordering."""
-    def normalise(value):
-        if isinstance(value, dict):
-            return {key: normalise(item) for key, item in sorted(value.items())}
-        if isinstance(value, list):
-            return [normalise(item) for item in value]
-        if isinstance(value, bool) or value is None:
-            return value
-        if isinstance(value, (int, float)):
-            return round(float(value), 4)
-        return value
+    """Stable comparison of fields that change inverter behaviour.
 
-    return sorted(
-        json.dumps(normalise(group), sort_keys=True, separators=(",", ":"))
-        for group in groups
-    )
+    FoxESS may add or normalise unrelated ``extraParam`` values on read-back.
+    Comparing the complete response caused a correctly applied schedule to be
+    treated as a failure.  Keep verification strict for the period, work mode,
+    SOC limits, discharge power and the post-cutoff mode.
+    """
+    def number(value):
+        if value is None:
+            return None
+        return round(float(value), 3)
+
+    signatures = []
+    for group in groups:
+        mode = str(group.get("workMode") or "")
+        extra = group.get("extraParam") or {}
+        critical = {
+            "minSocOnGrid": number(extra.get("minSocOnGrid")),
+        }
+        if mode == "ForceCharge":
+            critical.update({
+                "maxSoc": number(extra.get("maxSoc")),
+                "secondWorkMode": str(extra.get("secondWorkMode") or ""),
+            })
+        elif mode == "ForceDischarge":
+            critical.update({
+                "fdSoc": number(extra.get("fdSoc")),
+                "fdPwr": number(extra.get("fdPwr")),
+                "secondWorkMode": str(extra.get("secondWorkMode") or ""),
+            })
+        signatures.append(json.dumps({
+            "slot": slot(group),
+            "workMode": mode,
+            "critical": critical,
+        }, sort_keys=True, separators=(",", ":")))
+    return sorted(signatures)
 
 
 def backup(payload, now):
@@ -269,7 +296,10 @@ def verify_schedule(device_sn, expected, attempts=VERIFY_ATTEMPTS, wait=VERIFY_W
             continue
         if group_signature(actual) == expected_signature:
             return actual
-    raise RuntimeError("Scheduler verification mismatch after bounded retries")
+    raise RuntimeError(
+        "Scheduler verification mismatch after bounded retries; "
+        f"expected={expected_signature}; actual={group_signature(actual)}"
+    )
 
 
 def write_schedule(device_sn, groups):
@@ -326,11 +356,12 @@ def schedule_notification(phase, plan, soc, outcome, groups, now):
     if phase == "charge":
         active = next((g for g in groups if scope_managed(g, "charge")), None)
         if active:
+            target = float(active.get("extraParam", {}).get("maxSoc", MIN_SOC))
             headline = "IMPORT SCHEDULER SET AND VERIFIED"
             decision = (
                 "Window: 10:05 AM-1:55 PM\n"
                 f"Planned cheap import: {float(plan['charge_kwh']):.1f} kWh\n"
-                f"Battery target: {float(plan['charge_target_soc']):.1f}%"
+                f"FoxESS battery target: {target:.1f}%"
             )
         else:
             headline = "IMPORT SCHEDULER NOT REQUIRED"

@@ -59,10 +59,17 @@ class JointControllerTests(unittest.TestCase):
         self.assertEqual(len(managed), 1)
         self.assertEqual(controller.slot(managed[0]), (10, 5, 13, 55))
         self.assertEqual(managed[0]["workMode"], "ForceCharge")
-        self.assertEqual(managed[0]["extraParam"]["maxSoc"], 80.0)
+        self.assertEqual(managed[0]["extraParam"]["maxSoc"], 62.6)
 
-    def test_charge_is_not_armed_when_live_soc_already_meets_target(self):
-        desired = controller.desired_groups(self.existing, plan(), "charge", 82.0)
+    def test_charge_target_uses_live_soc_and_meter_side_grid_energy(self):
+        desired = controller.desired_groups(self.existing, plan(), "charge", 23.0)
+        charge = next(item for item in desired if controller.managed(item))
+        self.assertEqual(charge["extraParam"]["maxSoc"], 45.6)
+
+    def test_charge_is_not_armed_when_optimizer_requests_no_import(self):
+        desired = controller.desired_groups(
+            self.existing, plan(charge_kwh=0.0), "charge", 82.0
+        )
         self.assertFalse(any(controller.managed(item) for item in desired))
 
     def test_disabled_phase_removes_all_owned_periods(self):
@@ -109,6 +116,7 @@ class JointControllerTests(unittest.TestCase):
         self.assertIn("IMPORT SCHEDULER SET AND VERIFIED", message)
         self.assertIn("10:05 AM-1:55 PM", message)
         self.assertIn("10.0 kWh", message)
+        self.assertIn("62.6%", message)
 
     def test_stale_plan_and_stale_soc_are_rejected(self):
         now = datetime(2026, 10, 4, 9, 55, tzinfo=controller.TZ)
@@ -156,6 +164,25 @@ class JointControllerTests(unittest.TestCase):
         self.assertEqual(write.call_args_list[0].args[1], desired)
         self.assertEqual(write.call_args_list[1].args[1], self.existing)
         self.assertEqual(verify.call_count, 2)
+
+    def test_schedule_verification_ignores_foxess_non_control_fields(self):
+        expected = group(17, 21, "ForceDischarge", 45.0)
+        actual = json.loads(json.dumps(expected))
+        actual["extraParam"]["apiGeneratedValue"] = 123.0
+        actual["foxessInternalId"] = "normalised-on-readback"
+        self.assertEqual(
+            controller.group_signature([expected]),
+            controller.group_signature([actual]),
+        )
+
+    def test_schedule_verification_rejects_changed_cutoff(self):
+        expected = group(17, 21, "ForceDischarge", 45.0)
+        actual = json.loads(json.dumps(expected))
+        actual["extraParam"]["fdSoc"] = 44.0
+        self.assertNotEqual(
+            controller.group_signature([expected]),
+            controller.group_signature([actual]),
+        )
 
 
 if __name__ == "__main__":
