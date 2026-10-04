@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Optimizer Decision Review</title>
+  <style>
+    :root{
+      --ink:#172033;--muted:#65728a;--line:#dbe3ee;--panel:#fff;--page:#f4f7fb;
+      --nav:#111a2b;--nav2:#182640;--blue:#1769e0;--cyan:#0ea5b7;--green:#12805c;
+      --amber:#aa6508;--red:#c13e48;--violet:#7554d8;--soft-blue:#edf5ff;
+      --soft-green:#eaf8f2;--soft-amber:#fff6e7;--shadow:0 8px 28px rgba(24,39,75,.07);
+    }
+    *{box-sizing:border-box} body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    button,a{font:inherit}.shell{min-height:100vh}.topbar{background:linear-gradient(125deg,var(--nav),var(--nav2));color:#fff;padding:22px 28px 26px}
+    .toprow{max-width:1500px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:18px}.title-wrap{display:flex;align-items:center;gap:14px}
+    .mark{width:44px;height:44px;border-radius:14px;background:linear-gradient(145deg,#42d6bd,#2686ff);display:grid;place-items:center;font-size:22px;box-shadow:0 8px 24px rgba(30,153,220,.25)}
+    h1{font-size:25px;line-height:1.15;margin:0}.subtitle{color:#b8c6db;margin:5px 0 0}.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .pill,.button{border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:8px 12px;color:#e9f2ff;background:rgba(255,255,255,.08);font-weight:700}
+    .pill.good{background:rgba(31,190,130,.16);border-color:rgba(83,222,169,.42);color:#a9f3d4}.button{cursor:pointer}.button:hover{background:rgba(255,255,255,.15)}
+    .back{color:#c9d7eb;text-decoration:none}.page{max-width:1500px;margin:-14px auto 0;padding:0 22px 52px}.status-strip{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));overflow:hidden}
+    .status-item{padding:15px 18px;border-right:1px solid var(--line)}.status-item:last-child{border:0}.label{display:block;color:var(--muted);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}.value{display:block;font-size:16px;font-weight:800;margin-top:4px}.detail{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+    section{margin-top:18px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:16px;margin:0 2px 9px}.section-head h2{font-size:18px;margin:0}.section-head p{color:var(--muted);margin:3px 0 0;max-width:760px}.eyebrow{color:var(--blue);font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+    .grid{display:grid;gap:14px}.decision-grid{grid-template-columns:1.15fr 1.15fr .8fr}.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:17px;box-shadow:var(--shadow);min-width:0}.card h3{font-size:14px;margin:0 0 12px}.card.primary{border-top:4px solid var(--blue)}.card.preview{border-top:4px solid var(--cyan)}.card.audit{border-top:4px solid var(--violet)}
+    .metric-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}.metric{background:#f7f9fc;border:1px solid #e7edf5;border-radius:11px;padding:12px}.metric b{display:block;font-size:22px;letter-spacing:-.03em}.metric small{color:var(--muted)}
+    .timestamp{color:var(--muted);font-size:12px;margin-top:12px}.status-box{border-radius:11px;padding:12px;margin-top:10px;font-weight:700}.status-box.good{background:var(--soft-green);color:#096848}.status-box.warn{background:var(--soft-amber);color:#87500b}.status-box.neutral{background:var(--soft-blue);color:#174f96}
+    .flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:var(--shadow);overflow:hidden}.step{position:relative;padding:16px 18px;min-height:103px;border-right:1px solid var(--line)}.step:last-child{border:0}.step:not(:last-child):after{content:"›";position:absolute;right:-8px;top:34px;z-index:2;width:16px;height:30px;display:grid;place-items:center;color:#8b98ad;background:#fff;font-size:22px}.step b{display:block;font-size:19px;margin-top:7px}.step small{color:var(--muted)}
+    .why{margin-top:12px;background:#eef5ff;border-left:4px solid var(--blue);border-radius:10px;padding:13px 15px}.guardrails{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.guard{border:1px solid #ccd8e7;background:#fff;border-radius:999px;padding:6px 9px;font-size:12px;color:#44526a}.guard.good{background:var(--soft-green);border-color:#a5d9c4;color:#0b6a4b}.guard.warn{background:var(--soft-amber);border-color:#e8c992;color:#7c4b0d}
+    .evidence-layout{grid-template-columns:1.05fr 1.95fr}.evidence-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.evidence-card{padding:12px;border:1px solid var(--line);border-radius:11px;background:#fafbfd}.evidence-card b{display:block;font-size:20px}.evidence-card small{color:var(--muted)}
+    .metric-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}.metric-tab{border:1px solid #cfd9e7;background:#fff;border-radius:999px;padding:7px 11px;cursor:pointer;color:#526078;font-weight:700}.metric-tab.active{background:var(--nav2);color:#fff;border-color:var(--nav2)}
+    .bar-chart{height:248px;display:flex;align-items:stretch;gap:9px;border-bottom:1px solid #bfcadb;padding:20px 8px 0;background:linear-gradient(#fff,#fbfcfe)}.bar-group{flex:1;display:flex;flex-direction:column;justify-content:flex-end;min-width:42px}.bar-values{font-size:10px;color:var(--muted);text-align:center;white-space:nowrap}.bars{height:175px;display:flex;align-items:end;justify-content:center;gap:4px}.bar{width:min(22px,38%);min-height:2px;border-radius:5px 5px 0 0}.bar.forecast{background:var(--blue)}.bar.actual{background:#60c7b0}.bar-date{text-align:center;font-size:10px;color:#647187;padding-top:7px;white-space:nowrap}.legend{display:flex;gap:16px;margin-top:10px;color:var(--muted);font-size:12px}.swatch{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}.swatch.forecast{background:var(--blue)}.swatch.actual{background:#60c7b0}
+    .table-card{padding:0;overflow:hidden}.table-wrap{overflow:auto;max-height:520px}table{border-collapse:separate;border-spacing:0;width:100%;min-width:1050px}th{position:sticky;top:0;z-index:1;background:#eef3f9;color:#43516a;font-size:11px;text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:11px;border-bottom:1px solid #cbd7e5}td{padding:12px 11px;border-bottom:1px solid #e4eaf2;vertical-align:top}tbody tr:hover{background:#f8fbff}.today-row{background:#f0faf6}.cell-main{font-weight:800}.cell-sub{display:block;color:var(--muted);font-size:11px;margin-top:2px}.delta-pos{color:var(--green)}.delta-neg{color:var(--red)}
+    .timeline{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.event{border:1px solid var(--line);background:#fff;border-radius:12px;padding:12px}.event b{display:block}.event small{color:var(--muted)}
+    .empty{padding:26px;color:var(--muted);text-align:center}.error{background:#fff0f1;color:#9e2631;border:1px solid #edb5bb;border-radius:12px;padding:12px;margin-top:12px}.hidden{display:none!important}
+    @media(max-width:1050px){.status-strip{grid-template-columns:1fr 1fr}.status-item:nth-child(2){border-right:0}.decision-grid,.evidence-layout{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.step{border-bottom:1px solid var(--line)}.timeline{grid-template-columns:1fr 1fr}}
+    @media(max-width:650px){.topbar{padding:18px 16px 24px}.toprow{align-items:flex-start}.actions{justify-content:flex-end}.page{padding:0 10px 32px}.status-strip{grid-template-columns:1fr}.status-item{border-right:0;border-bottom:1px solid var(--line)}.decision-grid,.metric-pair,.evidence-summary,.flow,.timeline{grid-template-columns:1fr}.step:after{display:none}.section-head{align-items:flex-start;flex-direction:column}.card{padding:14px}.bar-chart{gap:3px}.bar-values{font-size:9px;transform:rotate(-20deg);transform-origin:center}.bar-date{font-size:9px}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="toprow">
+      <div class="title-wrap">
+        <div class="mark">⚡</div>
+        <div><h1>Optimizer Decision Review</h1><p class="subtitle">Control truth, live preview and ML evidence—kept separate.</p></div>
+      </div>
+      <div class="actions">
+        <span class="pill" id="controlPill">Loading control…</span>
+        <button class="button" id="refreshButton" type="button">Refresh</button>
+        <a class="back" href="/">Existing dashboard ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="status-strip">
+      <div class="status-item"><span class="label">Frozen control plan</span><span class="value" id="frozenTime">—</span><span class="detail">Authoritative for FoxESS</span></div>
+      <div class="status-item"><span class="label">Live battery</span><span class="value" id="liveBattery">—</span><span class="detail" id="liveTimestamp">Waiting for telemetry</span></div>
+      <div class="status-item"><span class="label">Next control event</span><span class="value" id="nextEvent">—</span><span class="detail">Australia/Sydney</span></div>
+      <div class="status-item"><span class="label">Expected improvement</span><span class="value" id="expectedGain">—</span><span class="detail">Frozen plan vs fair baseline</span></div>
+      <div class="status-item"><span class="label">ML evidence</span><span class="value" id="evidenceState">—</span><span class="detail" id="evidenceDetail">Forecast versus actual</span></div>
+    </div>
+
+    <div id="pageError" class="error hidden"></div>
+
+    <section>
+      <div class="section-head"><div><span class="eyebrow">Today’s decision</span><h2>What will happen, and has the recommendation moved?</h2><p>The frozen plan controls FoxESS. The live preview is a comparison only until the next scheduled snapshot.</p></div></div>
+      <div class="grid decision-grid">
+        <article class="card primary"><h3>Frozen control plan</h3><div class="metric-pair"><div class="metric"><span class="label">Cheap import</span><b id="frozenCharge">—</b><small id="frozenChargeTarget">—</small></div><div class="metric"><span class="label">Premium export</span><b id="frozenExport">—</b><small id="frozenExportCutoff">—</small></div></div><p class="timestamp" id="frozenModel">No frozen plan available.</p></article>
+        <article class="card preview"><h3>Latest live preview</h3><div class="metric-pair"><div class="metric"><span class="label">Cheap import</span><b id="previewCharge">—</b><small>Not sent until snapshot</small></div><div class="metric"><span class="label">Premium export</span><b id="previewExport">—</b><small>Not sent until snapshot</small></div></div><p class="timestamp" id="previewBasis">Waiting for live optimiser.</p></article>
+        <article class="card audit"><h3>Decision drift</h3><div class="metric-pair"><div class="metric"><span class="label">Import change</span><b id="chargeDelta">—</b><small>preview − frozen</small></div><div class="metric"><span class="label">Export change</span><b id="exportDelta">—</b><small>preview − frozen</small></div></div><div class="status-box neutral" id="driftStatus">Waiting for both plans.</div></article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head"><div><span class="eyebrow">Decision logic</span><h2>Can the energy path justify the action?</h2><p>Follow the battery from the frozen starting point through solar, import, export and protected reserve.</p></div></div>
+      <div class="flow" id="decisionFlow">
+        <div class="step"><span class="label">Starting battery</span><b id="flowStart">—</b><small>when plan was frozen</small></div>
+        <div class="step"><span class="label">Solar-only at 5 PM</span><b id="flowSolar">—</b><small>no cheap grid charge</small></div>
+        <div class="step"><span class="label">After cheap import</span><b id="flowFive">—</b><small>expected at 5 PM</small></div>
+        <div class="step"><span class="label">Premium export</span><b id="flowExport">—</b><small>5:05–8:55 PM</small></div>
+        <div class="step"><span class="label">Protected cutoff</span><b id="flowReserve">—</b><small>retained for demand</small></div>
+      </div>
+      <div class="why"><strong>Why the frozen optimiser chose this:</strong> <span id="decisionReason">No frozen explanation available.</span><div class="guardrails" id="guardrails"></div></div>
+    </section>
+
+    <section>
+      <div class="section-head"><div><span class="eyebrow">ML performance</span><h2>ML forecast performance: is it becoming trustworthy?</h2><p>Prediction error is forecast minus actual. This tests forecast quality; it does not by itself prove every control action was economically optimal.</p></div></div>
+      <div class="grid evidence-layout">
+        <article class="card">
+          <h3>Evidence summary</h3>
+          <div class="evidence-summary" id="evidenceCards"></div>
+          <div class="status-box neutral" id="learningAssessment">Waiting for validated days.</div>
+        </article>
+        <article class="card">
+          <div class="metric-tabs" id="metricTabs"></div>
+          <div class="bar-chart" id="performanceChart"><div class="empty">Loading forecast comparisons…</div></div>
+          <div class="legend"><span><i class="swatch forecast"></i>Forecast</span><span><i class="swatch actual"></i>Actual</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head"><div><span class="eyebrow">Seven-day outlook</span><h2>Frozen plan versus latest preview</h2><p>Future-day changes are expected. Large differences show where new SOC, weather or load information changed the recommendation.</p></div></div>
+      <article class="card table-card"><div class="table-wrap"><table><thead><tr><th>Date</th><th>Solar / protected load</th><th>Frozen import</th><th>Live import</th><th>Frozen export</th><th>Live export</th><th>5 PM SOC</th><th>Reserve</th><th>End SOC</th><th>Reason</th></tr></thead><tbody id="planBody"><tr><td colspan="10" class="empty">Loading plans…</td></tr></tbody></table></div></article>
+    </section>
+
+    <section>
+      <div class="section-head"><div><span class="eyebrow">Execution evidence</span><h2>What the controller actually verified</h2><p>Only VERIFIED events establish that the requested schedule was read back successfully from FoxESS.</p></div></div>
+      <div class="timeline" id="eventTimeline"><div class="empty">No execution events loaded.</div></div>
+    </section>
+  </main>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = value => String(value ?? "—").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+  const n = (value,digits=1) => value == null || Number.isNaN(Number(value)) ? "—" : Number(value).toFixed(digits);
+  const kwh = value => value == null ? "—" : `${n(value)} kWh`;
+  const pct = value => value == null ? "—" : `${n(value)}%`;
+  const signedKwh = value => value == null ? "—" : `${Number(value)>=0?"+":"−"}${n(Math.abs(Number(value)))} kWh`;
+  const money = value => value == null ? "—" : `${Number(value)<0?"−":""}$${Math.abs(Number(value)).toFixed(2)}`;
+  const localTime = value => value ? new Date(value).toLocaleString("en-AU",{weekday:"short",hour:"numeric",minute:"2-digit"}) : "—";
+  const shortDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short"}) : "—";
+  const get = async url => { const response=await fetch(url,{cache:"no-store"}); const data=await response.json(); if(!response.ok) throw new Error(data.error||`Unable to load ${url}`); return data; };
+
+  let currentPerformance=null;
+  let activeMetric="home_use";
+  const metricConfig={
+    solar:{label:"Solar",forecast:"solar_forecast_kwh",actual:"solar_actual_kwh",unit:"kWh"},
+    home_use:{label:"Home use",forecast:"load_forecast_kwh",actual:"load_actual_kwh",unit:"kWh"},
+    premium_export:{label:"5–9 PM export",forecast:"premium_export_forecast_kwh",actual:"premium_export_actual_kwh",unit:"kWh"},
+    grid_import:{label:"Grid import",forecast:"grid_import_forecast_kwh",actual:"grid_import_actual_kwh",unit:"kWh"},
+    premium_revenue:{label:"5–9 PM revenue",forecast:"export_revenue_forecast",actual:"premium_revenue_actual",unit:"$"}
+  };
+
+  function nextControl(schedule){
+    const now=new Date(); const minutes=now.getHours()*60+now.getMinutes();
+    const events=[[9*60+45,"Freeze import plan"],[9*60+55,"Apply import schedule"],[16*60+45,"Freeze export plan"],[16*60+55,"Apply export schedule"],[21*60,"Clean schedules"]];
+    const next=events.find(([at])=>at>minutes); return next?`${next[1]} · ${String(Math.floor(next[0]/60)).padStart(2,"0")}:${String(next[0]%60).padStart(2,"0")}`:"Tomorrow · Freeze import plan 09:45";
+  }
+
+  function renderPerformance(performance){
+    currentPerformance=performance;
+    if(!performance?.available){$("evidenceState").textContent="Collecting";$("evidenceDetail").textContent=performance?.reason||"No validated days";$("learningAssessment").textContent="No completed forecast-versus-actual days are available yet.";return;}
+    const days=Number(performance.validated_days||0);$("evidenceState").textContent=`${days} validated day${days===1?"":"s"}`;$("evidenceDetail").textContent=performance.evidence_label||"Forecast versus actual";
+    const metrics=performance.metrics||{}; const cards=[
+      ["Home-use MAE",metrics.home_use?.mae,"kWh",metrics.home_use?.bias],
+      ["Solar MAE",metrics.solar?.mae,"kWh",metrics.solar?.bias],
+      ["Export MAE",metrics.premium_export?.mae,"kWh",metrics.premium_export?.bias],
+      ["ML vs baseline",performance.ml_improvement_percent,"%",null]
+    ];
+    $("evidenceCards").innerHTML=cards.map(([label,value,unit,bias])=>`<div class="evidence-card"><span class="label">${esc(label)}</span><b>${value==null?"Collecting":`${n(value,2)}${unit==="$"?"":` ${unit}`}`}</b><small>${bias==null?"":`${Number(bias)<0?"forecast low":"forecast high"} by ${n(Math.abs(Number(bias)),2)} ${unit}`}</small></div>`).join("");
+    const under=Number(performance.ml_underprediction_days||0); const worst=performance.worst_ml_underprediction_kwh;
+    if(days<7){$("learningAssessment").className="status-box warn";$("learningAssessment").textContent=`Early evidence: ${days}/7 minimum days for a trend. Monitor ${under} load-underprediction day${under===1?"":"s"}; do not interpret this as proven learning yet.`;}
+    else{$("learningAssessment").className=under>days/2?"status-box warn":"status-box good";$("learningAssessment").textContent=`${performance.evidence_label}. ML beat the baseline on ${performance.ml_wins||0} day(s); worst home-use underprediction ${worst==null?"not available":`${n(Math.abs(worst),2)} kWh`}.`;}
+    $("metricTabs").innerHTML=Object.entries(metricConfig).map(([key,cfg])=>`<button class="metric-tab ${key===activeMetric?"active":""}" data-metric="${key}" type="button">${esc(cfg.label)}</button>`).join("");
+    $("metricTabs").querySelectorAll("button").forEach(button=>button.addEventListener("click",()=>{activeMetric=button.dataset.metric;renderPerformance(performance);}));
+    renderChart(performance.daily||[],activeMetric);
+  }
+
+  function renderChart(rows,key){
+    const cfg=metricConfig[key]; const usable=rows.filter(row=>row[cfg.forecast]!=null&&row[cfg.actual]!=null).slice(-10); const target=$("performanceChart");
+    if(!usable.length){target.innerHTML='<div class="empty">No comparable forecast and actual values for this metric yet.</div>';return;}
+    const max=Math.max(...usable.flatMap(row=>[Number(row[cfg.forecast]),Number(row[cfg.actual])]),.01);
+    target.innerHTML=usable.map(row=>{const f=Number(row[cfg.forecast]);const a=Number(row[cfg.actual]);const format=value=>cfg.unit==="$"?money(value):n(value,1);return `<div class="bar-group" title="${esc(shortDate(row.date))}: forecast ${format(f)}, actual ${format(a)}"><div class="bar-values">${format(f)} / ${format(a)}</div><div class="bars"><i class="bar forecast" style="height:${Math.max(2,f/max*100)}%"></i><i class="bar actual" style="height:${Math.max(2,a/max*100)}%"></i></div><div class="bar-date">${esc(shortDate(row.date).replace(/,.*/,""))}</div></div>`;}).join("");
+  }
+
+  function render(audit,preview,performance){
+    const frozenDays=audit.frozen?.days||[]; const frozen=frozenDays.find(day=>day.date===audit.today)||frozenDays[0]; const liveDays=preview?.days||[]; const live=liveDays.find(day=>day.date===audit.today)||liveDays[0];
+    const switches=audit.control?.switches||{}; const isLive=audit.control?.mode==="joint"&&switches.master_enabled;$("controlPill").textContent=isLive?"Joint control live":"Control not fully enabled";$("controlPill").className=`pill ${isLive?"good":""}`;
+    $("frozenTime").textContent=audit.frozen?localTime(audit.frozen.created_at):"Unavailable";$("liveBattery").textContent=audit.live?.battery_soc==null?"—":pct(audit.live.battery_soc);$("liveTimestamp").textContent=audit.live?.timestamp?`Telemetry ${localTime(audit.live.timestamp)}`:"Waiting for telemetry";$("nextEvent").textContent=nextControl(audit.control?.schedule||{});
+    if(frozen){$("frozenCharge").textContent=kwh(frozen.charge_kwh);$("frozenChargeTarget").textContent=`planned target ${pct(frozen.charge_target_soc)}`;$("frozenExport").textContent=kwh(frozen.export_kwh);$("frozenExportCutoff").textContent=`protected cutoff ${pct(frozen.export_cutoff_soc)}`;$("frozenModel").textContent=`Frozen ${localTime(audit.frozen.created_at)} · ${frozen.model_version||"model version unavailable"}`;$("expectedGain").textContent=money(Number(frozen.net_value||0)-Number(frozen.baseline_value||0));}
+    if(live){const liveCharge=Number(live.actual_simulated_charge_kwh??live.recommended_charge_kwh??0);const liveExport=Number(live.simulated_premium_export_kwh??live.recommended_export_kwh??0);$("previewCharge").textContent=kwh(liveCharge);$("previewExport").textContent=kwh(liveExport);$("previewBasis").textContent=`Current SOC basis ${pct(live.battery_start_soc)} · server cache up to ${preview.cache_seconds||300}s`;if(frozen){const dc=liveCharge-Number(frozen.charge_kwh||0),de=liveExport-Number(frozen.export_kwh||0);$("chargeDelta").textContent=signedKwh(dc);$("exportDelta").textContent=signedKwh(de);const stable=Math.abs(dc)<.5&&Math.abs(de)<.5;$("driftStatus").className=`status-box ${stable?"good":"warn"}`;$("driftStatus").textContent=stable?"Stable: live preview still supports the frozen action.":"Changed: new information moved the preview. FoxESS remains on the frozen plan until the next snapshot.";}}
+    if(frozen){$("flowStart").textContent=pct(frozen.starting_soc);$("flowSolar").textContent=pct(frozen.solar_only_5pm_soc);$("flowFive").textContent=pct(frozen.expected_5pm_soc);$("flowExport").textContent=kwh(frozen.export_kwh);$("flowReserve").textContent=pct(frozen.export_cutoff_soc);$("decisionReason").textContent=frozen.reason||"No explanation stored.";const guards=[
+      [Number(frozen.export_cutoff_soc)>=10,"10% physical floor",pct(frozen.export_cutoff_soc)],
+      [Number(frozen.pre_10am_import_kwh||0)<=.05,"Expensive pre-10 AM import",kwh(frozen.pre_10am_import_kwh||0)],
+      [frozen.required_reserve_soc!=null,"Forecast reserve",pct(frozen.required_reserve_soc)],
+      [true,"Next recharge",frozen.next_recharge_timestamp?localTime(frozen.next_recharge_timestamp):"Forecast horizon"],
+      [Number(frozen.net_value||0)>=Number(frozen.baseline_value||0),"Expected gain",money(Number(frozen.net_value||0)-Number(frozen.baseline_value||0))]
+    ];$("guardrails").innerHTML=guards.map(([ok,label,value])=>`<span class="guard ${ok?"good":"warn"}">${esc(label)}: ${esc(value)}</span>`).join("");}
+    renderPlanTable(frozenDays,liveDays,audit.today);renderEvents(audit.events||[]);renderPerformance(performance);
+  }
+
+  function renderPlanTable(frozenDays,liveDays,today){
+    const liveByDate=new Map(liveDays.map(day=>[day.date,day])); if(!frozenDays.length){$("planBody").innerHTML='<tr><td colspan="10" class="empty">No frozen executable plan is available.</td></tr>';return;}
+    $("planBody").innerHTML=frozenDays.map(day=>{const live=liveByDate.get(day.date)||{};const lc=Number(live.actual_simulated_charge_kwh??live.recommended_charge_kwh??0),le=Number(live.simulated_premium_export_kwh??live.recommended_export_kwh??0);const dc=lc-Number(day.charge_kwh||0),de=le-Number(day.export_kwh||0);return `<tr class="${day.date===today?"today-row":""}"><td><span class="cell-main">${day.date===today?"Today · ":""}${esc(shortDate(day.date))}</span><span class="cell-sub">${esc(day.model_version||"")}</span></td><td><span class="cell-main">${kwh(day.solar_kwh)}</span><span class="cell-sub">protected load ${kwh(day.protected_load_kwh)}</span></td><td><span class="cell-main">${kwh(day.charge_kwh)}</span><span class="cell-sub">target ${pct(day.charge_target_soc)}</span></td><td><span class="cell-main">${kwh(lc)}</span><span class="cell-sub ${dc>=0?"delta-pos":"delta-neg"}">${signedKwh(dc)}</span></td><td><span class="cell-main">${kwh(day.export_kwh)}</span><span class="cell-sub">cutoff ${pct(day.export_cutoff_soc)}</span></td><td><span class="cell-main">${kwh(le)}</span><span class="cell-sub ${de>=0?"delta-pos":"delta-neg"}">${signedKwh(de)}</span></td><td>${pct(day.expected_5pm_soc)}</td><td>${pct(day.required_reserve_soc)}</td><td>${pct(day.expected_end_soc)}</td><td><span class="cell-sub">${esc(day.reason||"—")}</span></td></tr>`;}).join("");
+  }
+
+  function renderEvents(events){
+    const target=$("eventTimeline");if(!events.length){target.innerHTML='<div class="empty">No controller events have been recorded yet.</div>';return;}target.innerHTML=events.slice(0,8).map(event=>`<article class="event"><span class="label">${esc(event.phase)} · ${esc(event.status)}</span><b>${esc(localTime(event.event_time))}</b><small>${esc(event.detail)}</small></article>`).join("");
+  }
+
+  async function refresh(){
+    $("refreshButton").disabled=true;$("pageError").classList.add("hidden");
+    const results=await Promise.allSettled([get("/api/optimizer-audit"),get("/api/economic-optimizer"),get("/api/ml-performance")]);
+    $("refreshButton").disabled=false;
+    const audit=results[0].status==="fulfilled"?results[0].value:null;const preview=results[1].status==="fulfilled"?results[1].value:{available:false,days:[]};const performance=results[2].status==="fulfilled"?results[2].value:{available:false,reason:"ML evidence unavailable"};
+    if(!audit){$("pageError").textContent=results[0].reason?.message||"Frozen control data is unavailable.";$("pageError").classList.remove("hidden");return;}
+    if(results[1].status==="rejected"){$("pageError").textContent="Frozen control data loaded, but the live preview is temporarily unavailable.";$("pageError").classList.remove("hidden");}
+    render(audit,preview,performance);
+  }
+  $("refreshButton").addEventListener("click",refresh);refresh();setInterval(refresh,60000);
+</script>
+</body>
+</html>

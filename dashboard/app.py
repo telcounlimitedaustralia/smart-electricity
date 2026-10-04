@@ -1,8 +1,10 @@
 from flask import Flask, render_template, jsonify, request
+import json
 import os
 import sqlite3
 from pathlib import Path
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import sys
 import time
 from threading import Lock
@@ -38,6 +40,8 @@ from economic_optimizer_v2 import (
     SOLAR_PROTECTION_FACTOR,
     TERMINAL_ENERGY_VALUE_CENTS_PER_KWH,
 )
+
+SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
 app = Flask(__name__)
 
@@ -138,6 +142,132 @@ def latest():
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/optimizer-review")
+def optimizer_review():
+    """Separate operator-focused view; the existing dashboard is unchanged."""
+    return render_template("optimizer_review.html")
+
+
+@app.route("/api/optimizer-audit")
+def optimizer_audit():
+    """Return the frozen executable plan and its verified execution trail."""
+    conn = db()
+    now = datetime.now(SYDNEY_TZ)
+
+    def table_exists(name):
+        return bool(conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (name,),
+        ).fetchone())
+
+    frozen = None
+    if table_exists("economic_plan_actions"):
+        latest_created = conn.execute("""
+            SELECT created_at FROM economic_plan_actions
+            ORDER BY rowid DESC LIMIT 1
+        """).fetchone()
+        if latest_created:
+            created_at = latest_created["created_at"]
+            rows = conn.execute("""
+                SELECT * FROM economic_plan_actions
+                WHERE created_at = ? ORDER BY plan_date
+            """, (created_at,)).fetchall()
+            frozen_days = []
+            for row in rows:
+                item = dict(row)
+                try:
+                    plan_payload = json.loads(item.get("plan_json") or "{}")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    plan_payload = {}
+                daily = plan_payload.get("daily") or {}
+                frozen_days.append({
+                    "date": item.get("plan_date"),
+                    "model_version": item.get("model_version"),
+                    "solar_kwh": item.get("solar_kwh"),
+                    "ml_load_kwh": item.get("point_load_kwh"),
+                    "protected_load_kwh": item.get("safe_load_kwh"),
+                    "starting_soc": plan_payload.get("start_soc"),
+                    "charge_kwh": item.get("charge_kwh"),
+                    "charge_target_soc": item.get("charge_target_soc"),
+                    "expected_5pm_soc": item.get("expected_5pm_soc"),
+                    "export_kwh": item.get("export_kwh"),
+                    "export_cutoff_soc": item.get("export_cutoff_soc"),
+                    "expected_end_soc": item.get("expected_end_soc"),
+                    "grid_import_kwh": item.get("grid_import_kwh"),
+                    "net_value": item.get("net_value"),
+                    "baseline_value": item.get("baseline_value"),
+                    "reason": item.get("reason"),
+                    "required_reserve_soc": daily.get("required_post_export_soc"),
+                    "required_reserve_kwh": daily.get("required_post_export_energy"),
+                    "solar_only_5pm_soc": daily.get("solar_only_5pm_soc"),
+                    "pre_10am_import_kwh": daily.get("pre_10am_grid_import"),
+                    "next_recharge_timestamp": daily.get("next_recharge_timestamp"),
+                    "next_recharge_type": daily.get("next_recharge_type"),
+                    "import_cost": daily.get("import_cost"),
+                    "export_revenue": daily.get("export_revenue"),
+                    "degradation_cost": daily.get("degradation_cost"),
+                })
+            frozen = {
+                "created_at": created_at,
+                "days": frozen_days,
+            }
+
+    events = []
+    if table_exists("automation_events"):
+        events = [dict(row) for row in conn.execute("""
+            SELECT event_time, plan_date, phase, status, detail,
+                   charge_kwh, export_kwh
+            FROM automation_events
+            ORDER BY event_time DESC LIMIT 20
+        """).fetchall()]
+
+    live = None
+    if table_exists("foxess_live"):
+        row = conn.execute("""
+            SELECT timestamp, battery_soc, pv_kw, load_kw,
+                   grid_import_kw, grid_export_kw
+            FROM foxess_live ORDER BY id DESC LIMIT 1
+        """).fetchone()
+        live = dict(row) if row else None
+    conn.close()
+
+    switches = get_switches(DB)
+    control_mode = os.getenv("FOXESS_CONTROL_MODE", "rule").strip().lower()
+    today = now.date().isoformat()
+    latest_by_phase = {}
+    for event in events:
+        if event["plan_date"] == today and event["phase"] not in latest_by_phase:
+            latest_by_phase[event["phase"]] = event
+
+    return jsonify({
+        "available": frozen is not None,
+        "generated_at": now.isoformat(timespec="seconds"),
+        "today": today,
+        "frozen": frozen,
+        "live": live,
+        "control": {
+            "mode": control_mode,
+            "switches": switches,
+            "latest_by_phase": latest_by_phase,
+            "schedule": {
+                "plan_import": "09:45",
+                "apply_import": "09:55",
+                "import_window": "10:05-13:55",
+                "plan_export": "16:45",
+                "apply_export": "16:55",
+                "export_window": "17:05-20:55",
+                "cleanup": "21:00",
+            },
+        },
+        "events": events,
+        "definitions": {
+            "frozen": "Time-stamped optimiser output used by the FoxESS controller.",
+            "live_preview": "Current recalculation for comparison only; it is not sent to FoxESS until the next scheduled snapshot.",
+            "ml_evidence": "Forecast-versus-actual history. It measures prediction quality, not causal proof that every optimiser action was best.",
+        },
+    })
 
 
 @app.route("/api/status")
@@ -783,7 +913,7 @@ def economic_optimizer():
         final = result["final_result"]
         baseline = result["baseline_result"]
 
-        today_string = datetime.now().date().isoformat()
+        today_string = datetime.now(SYDNEY_TZ).date().isoformat()
         actual_today_conn = db()
         actual_today_solar = actual_today_conn.execute("""
             SELECT COALESCE(SUM(pv_kw) / 12.0, 0)
