@@ -122,10 +122,25 @@
   const money = value => value == null ? "—" : `${Number(value)<0?"−":""}$${Math.abs(Number(value)).toFixed(2)}`;
   const localTime = value => value ? new Date(value).toLocaleString("en-AU",{weekday:"short",hour:"numeric",minute:"2-digit"}) : "—";
   const shortDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short"}) : "—";
-  const get = async url => { const response=await fetch(url,{cache:"no-store"}); const data=await response.json(); if(!response.ok) throw new Error(data.error||`Unable to load ${url}`); return data; };
+  const get = async (url,timeoutMs=15000) => {
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),timeoutMs);
+    try{
+      const response=await fetch(url,{cache:"no-store",credentials:"same-origin",signal:controller.signal});
+      const contentType=response.headers.get("content-type")||"";
+      const data=contentType.includes("application/json") ? await response.json() : null;
+      if(!response.ok) throw new Error(data?.error||`${url} returned HTTP ${response.status}`);
+      if(data==null) throw new Error(`${url} did not return JSON`);
+      return data;
+    }catch(error){
+      if(error.name==="AbortError") throw new Error(`${url} timed out after ${Math.round(timeoutMs/1000)} seconds`);
+      throw error;
+    }finally{clearTimeout(timer);}
+  };
 
   let currentPerformance=null;
   let activeMetric="home_use";
+  let refreshGeneration=0;
   const metricConfig={
     solar:{label:"Solar",forecast:"solar_forecast_kwh",actual:"solar_actual_kwh",unit:"kWh"},
     home_use:{label:"Home use",forecast:"load_forecast_kwh",actual:"load_actual_kwh",unit:"kWh"},
@@ -142,7 +157,7 @@
 
   function renderPerformance(performance){
     currentPerformance=performance;
-    if(!performance?.available){$("evidenceState").textContent="Collecting";$("evidenceDetail").textContent=performance?.reason||"No validated days";$("learningAssessment").textContent="No completed forecast-versus-actual days are available yet.";return;}
+    if(!performance?.available){$("evidenceState").textContent="Collecting";$("evidenceDetail").textContent=performance?.reason||"No validated days";$("evidenceCards").innerHTML='<div class="empty">Waiting for validated forecast days.</div>';$("metricTabs").innerHTML="";$("performanceChart").innerHTML='<div class="empty">ML evidence will load independently of the control plan.</div>';$("learningAssessment").className="status-box neutral";$("learningAssessment").textContent="No completed forecast-versus-actual days are available yet.";return;}
     const days=Number(performance.validated_days||0);$("evidenceState").textContent=`${days} validated day${days===1?"":"s"}`;$("evidenceDetail").textContent=performance.evidence_label||"Forecast versus actual";
     const metrics=performance.metrics||{}; const cards=[
       ["Home-use MAE",metrics.home_use?.mae,"kWh",metrics.home_use?.bias],
@@ -171,7 +186,9 @@
     const switches=audit.control?.switches||{}; const isLive=audit.control?.mode==="joint"&&switches.master_enabled;$("controlPill").textContent=isLive?"Joint control live":"Control not fully enabled";$("controlPill").className=`pill ${isLive?"good":""}`;
     $("frozenTime").textContent=audit.frozen?localTime(audit.frozen.created_at):"Unavailable";$("liveBattery").textContent=audit.live?.battery_soc==null?"—":pct(audit.live.battery_soc);$("liveTimestamp").textContent=audit.live?.timestamp?`Telemetry ${localTime(audit.live.timestamp)}`:"Waiting for telemetry";$("nextEvent").textContent=nextControl(audit.control?.schedule||{});
     if(frozen){$("frozenCharge").textContent=kwh(frozen.charge_kwh);$("frozenChargeTarget").textContent=`planned target ${pct(frozen.charge_target_soc)}`;$("frozenExport").textContent=kwh(frozen.export_kwh);$("frozenExportCutoff").textContent=`protected cutoff ${pct(frozen.export_cutoff_soc)}`;$("frozenModel").textContent=`Frozen ${localTime(audit.frozen.created_at)} · ${frozen.model_version||"model version unavailable"}`;$("expectedGain").textContent=money(Number(frozen.net_value||0)-Number(frozen.baseline_value||0));}
+    else{$("frozenCharge").textContent="—";$("frozenExport").textContent="—";$("frozenModel").textContent="No frozen plan available.";$("expectedGain").textContent="—";}
     if(live){const liveCharge=Number(live.actual_simulated_charge_kwh??live.recommended_charge_kwh??0);const liveExport=Number(live.simulated_premium_export_kwh??live.recommended_export_kwh??0);$("previewCharge").textContent=kwh(liveCharge);$("previewExport").textContent=kwh(liveExport);$("previewBasis").textContent=`Current SOC basis ${pct(live.battery_start_soc)} · server cache up to ${preview.cache_seconds||300}s`;if(frozen){const dc=liveCharge-Number(frozen.charge_kwh||0),de=liveExport-Number(frozen.export_kwh||0);$("chargeDelta").textContent=signedKwh(dc);$("exportDelta").textContent=signedKwh(de);const stable=Math.abs(dc)<.5&&Math.abs(de)<.5;$("driftStatus").className=`status-box ${stable?"good":"warn"}`;$("driftStatus").textContent=stable?"Stable: live preview still supports the frozen action.":"Changed: new information moved the preview. FoxESS remains on the frozen plan until the next snapshot.";}}
+    else{$("previewCharge").textContent="—";$("previewExport").textContent="—";$("previewBasis").textContent="Live preview is loading independently.";$("chargeDelta").textContent="—";$("exportDelta").textContent="—";$("driftStatus").className="status-box neutral";$("driftStatus").textContent="Frozen plan is available; waiting for live comparison.";}
     if(frozen){$("flowStart").textContent=pct(frozen.starting_soc);$("flowSolar").textContent=pct(frozen.solar_only_5pm_soc);$("flowFive").textContent=pct(frozen.expected_5pm_soc);$("flowExport").textContent=kwh(frozen.export_kwh);$("flowReserve").textContent=pct(frozen.export_cutoff_soc);$("decisionReason").textContent=frozen.reason||"No explanation stored.";const guards=[
       [Number(frozen.export_cutoff_soc)>=10,"10% physical floor",pct(frozen.export_cutoff_soc)],
       [Number(frozen.pre_10am_import_kwh||0)<=.05,"Expensive pre-10 AM import",kwh(frozen.pre_10am_import_kwh||0)],
@@ -184,7 +201,7 @@
 
   function renderPlanTable(frozenDays,liveDays,today){
     const liveByDate=new Map(liveDays.map(day=>[day.date,day])); if(!frozenDays.length){$("planBody").innerHTML='<tr><td colspan="10" class="empty">No frozen executable plan is available.</td></tr>';return;}
-    $("planBody").innerHTML=frozenDays.map(day=>{const live=liveByDate.get(day.date)||{};const lc=Number(live.actual_simulated_charge_kwh??live.recommended_charge_kwh??0),le=Number(live.simulated_premium_export_kwh??live.recommended_export_kwh??0);const dc=lc-Number(day.charge_kwh||0),de=le-Number(day.export_kwh||0);return `<tr class="${day.date===today?"today-row":""}"><td><span class="cell-main">${day.date===today?"Today · ":""}${esc(shortDate(day.date))}</span><span class="cell-sub">${esc(day.model_version||"")}</span></td><td><span class="cell-main">${kwh(day.solar_kwh)}</span><span class="cell-sub">protected load ${kwh(day.protected_load_kwh)}</span></td><td><span class="cell-main">${kwh(day.charge_kwh)}</span><span class="cell-sub">target ${pct(day.charge_target_soc)}</span></td><td><span class="cell-main">${kwh(lc)}</span><span class="cell-sub ${dc>=0?"delta-pos":"delta-neg"}">${signedKwh(dc)}</span></td><td><span class="cell-main">${kwh(day.export_kwh)}</span><span class="cell-sub">cutoff ${pct(day.export_cutoff_soc)}</span></td><td><span class="cell-main">${kwh(le)}</span><span class="cell-sub ${de>=0?"delta-pos":"delta-neg"}">${signedKwh(de)}</span></td><td>${pct(day.expected_5pm_soc)}</td><td>${pct(day.required_reserve_soc)}</td><td>${pct(day.expected_end_soc)}</td><td><span class="cell-sub">${esc(day.reason||"—")}</span></td></tr>`;}).join("");
+    $("planBody").innerHTML=frozenDays.map(day=>{const live=liveByDate.get(day.date);const lc=live?Number(live.actual_simulated_charge_kwh??live.recommended_charge_kwh??0):null,le=live?Number(live.simulated_premium_export_kwh??live.recommended_export_kwh??0):null;const dc=lc==null?null:lc-Number(day.charge_kwh||0),de=le==null?null:le-Number(day.export_kwh||0);return `<tr class="${day.date===today?"today-row":""}"><td><span class="cell-main">${day.date===today?"Today · ":""}${esc(shortDate(day.date))}</span><span class="cell-sub">${esc(day.model_version||"")}</span></td><td><span class="cell-main">${kwh(day.solar_kwh)}</span><span class="cell-sub">protected load ${kwh(day.protected_load_kwh)}</span></td><td><span class="cell-main">${kwh(day.charge_kwh)}</span><span class="cell-sub">target ${pct(day.charge_target_soc)}</span></td><td><span class="cell-main">${kwh(lc)}</span><span class="cell-sub ${dc==null?"":dc>=0?"delta-pos":"delta-neg"}">${signedKwh(dc)}</span></td><td><span class="cell-main">${kwh(day.export_kwh)}</span><span class="cell-sub">cutoff ${pct(day.export_cutoff_soc)}</span></td><td><span class="cell-main">${kwh(le)}</span><span class="cell-sub ${de==null?"":de>=0?"delta-pos":"delta-neg"}">${signedKwh(de)}</span></td><td>${pct(day.expected_5pm_soc)}</td><td>${pct(day.required_reserve_soc)}</td><td>${pct(day.expected_end_soc)}</td><td><span class="cell-sub">${esc(day.reason||"—")}</span></td></tr>`;}).join("");
   }
 
   function renderEvents(events){
@@ -192,13 +209,27 @@
   }
 
   async function refresh(){
+    const generation=++refreshGeneration;
     $("refreshButton").disabled=true;$("pageError").classList.add("hidden");
-    const results=await Promise.allSettled([get("/api/optimizer-audit"),get("/api/economic-optimizer"),get("/api/ml-performance")]);
-    $("refreshButton").disabled=false;
-    const audit=results[0].status==="fulfilled"?results[0].value:null;const preview=results[1].status==="fulfilled"?results[1].value:{available:false,days:[]};const performance=results[2].status==="fulfilled"?results[2].value:{available:false,reason:"ML evidence unavailable"};
-    if(!audit){$("pageError").textContent=results[0].reason?.message||"Frozen control data is unavailable.";$("pageError").classList.remove("hidden");return;}
-    if(results[1].status==="rejected"){$("pageError").textContent="Frozen control data loaded, but the live preview is temporarily unavailable.";$("pageError").classList.remove("hidden");}
+    let audit;
+    try{audit=await get("/api/optimizer-audit",15000);}
+    catch(error){if(generation!==refreshGeneration)return;$("refreshButton").disabled=false;$("controlPill").textContent="Control data unavailable";$("pageError").textContent=error.message||"Frozen control data is unavailable.";$("pageError").classList.remove("hidden");return;}
+    if(generation!==refreshGeneration)return;
+    render(audit,{available:false,days:[]},{available:false,reason:"Loading ML evidence…"});
+
+    const results=await Promise.allSettled([
+      get("/api/economic-optimizer",60000),
+      get("/api/ml-performance",20000)
+    ]);
+    if(generation!==refreshGeneration)return;
+    const preview=results[0].status==="fulfilled"?results[0].value:{available:false,days:[]};
+    const performance=results[1].status==="fulfilled"?results[1].value:{available:false,reason:"ML evidence unavailable"};
     render(audit,preview,performance);
+    const failures=[];
+    if(results[0].status==="rejected")failures.push(`Live preview: ${results[0].reason.message}`);
+    if(results[1].status==="rejected")failures.push(`ML evidence: ${results[1].reason.message}`);
+    if(failures.length){$("pageError").textContent=`Frozen control data loaded. ${failures.join(" | ")}`;$("pageError").classList.remove("hidden");}
+    $("refreshButton").disabled=false;
   }
   $("refreshButton").addEventListener("click",refresh);refresh();setInterval(refresh,60000);
 </script>
