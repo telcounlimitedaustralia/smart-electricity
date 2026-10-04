@@ -13,7 +13,7 @@ SHADOW ONLY.
 
 import sqlite3
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import joblib
@@ -25,6 +25,8 @@ DB = BASE / "data" / "energy.db"
 MODEL_FILE = BASE / "models" / "load_candidate_v2.joblib"
 
 TZ = ZoneInfo("Australia/Sydney")
+FIVE_MINUTE_SECONDS = 5 * 60
+COMPLETED_DAY_MISSING_TOLERANCE = 12
 
 
 def connect():
@@ -77,7 +79,17 @@ def actual_hourly_load(c):
     return values
 
 
-def actual_daily_load(c):
+def expected_five_minute_readings(day):
+    """Return the physical sample count for a Sydney calendar day."""
+    start = datetime(day.year, day.month, day.day, tzinfo=TZ)
+    end = start + timedelta(days=1)
+    elapsed = (
+        end.astimezone(timezone.utc) - start.astimezone(timezone.utc)
+    ).total_seconds()
+    return int(elapsed / FIVE_MINUTE_SECONDS)
+
+
+def actual_daily_load(c, today=None):
     """
     Build daily load totals.
 
@@ -109,7 +121,7 @@ def actual_daily_load(c):
             r["load_kwh"] or 0
         )
 
-    today = datetime.now(TZ).date()
+    today = today or datetime.now(TZ).date()
 
     # Find live days not already represented by history.
     live_days = c.execute("""
@@ -158,11 +170,16 @@ def actual_daily_load(c):
             last_timestamp
         ).hour
 
-        # Expected ~288 five-minute samples/day.
-        # Require at least 23 hours of readings and data
-        # extending into the final hour of the day.
+        # Require all but at most one hour of the physical day, plus data
+        # extending into its final wall-clock hour.  Sydney days can contain
+        # 23, 24 or 25 hours across daylight-saving transitions.
+        minimum_readings = max(
+            1,
+            expected_five_minute_readings(day_date)
+            - COMPLETED_DAY_MISSING_TOLERANCE,
+        )
         if (
-            readings >= 276
+            readings >= minimum_readings
             and last_hour >= 23
         ):
             values[day_string] = float(
