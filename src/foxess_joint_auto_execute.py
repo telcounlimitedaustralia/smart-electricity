@@ -178,6 +178,38 @@ def managed(group):
     return slot(group) in MANAGED_SLOTS
 
 
+def default_self_use(group):
+    """Identify FoxESS Remaining Time Mode exposed as an all-day group.
+
+    The public OpenAPI read does not reliably retain the app's internal
+    ``isRemainMode`` marker.  Sending this group back through OpenAPI can turn
+    it into an ordinary overlapping schedule, so it must never be round-tripped.
+    """
+    mode = str(group.get("workMode") or "").replace("-", "").replace("_", "").lower()
+    return (
+        mode == "selfuse"
+        and slot(group) in {(0, 0, 23, 59), (0, 0, 24, 0)}
+    )
+
+
+def active_group(group):
+    enabled = group.get("enable")
+    if enabled is None:
+        return True
+    if isinstance(enabled, str):
+        return enabled.strip().lower() not in {"0", "false", "off"}
+    return bool(enabled)
+
+
+def outbound_groups(groups):
+    """Return explicit active periods safe to send through public OpenAPI."""
+    return [
+        deepcopy(group)
+        for group in groups
+        if active_group(group) and not default_self_use(group)
+    ]
+
+
 def scope_managed(group, scope):
     current = slot(group)
     if scope == "charge":
@@ -201,7 +233,13 @@ def base_extra(groups):
 
 def desired_groups(existing, plan, phase, live_soc, enabled=True):
     """Return the complete schedule, preserving all non-owned periods."""
-    groups = [deepcopy(group) for group in existing if not managed(group)]
+    groups = [
+        deepcopy(group)
+        for group in existing
+        if active_group(group)
+        and not managed(group)
+        and not default_self_use(group)
+    ]
     if phase == "watchdog" or not enabled:
         return groups
 
@@ -255,7 +293,7 @@ def group_signature(groups):
         return round(float(value), 3)
 
     signatures = []
-    for group in groups:
+    for group in outbound_groups(groups):
         mode = str(group.get("workMode") or "")
         extra = group.get("extraParam") or {}
         critical = {
@@ -325,17 +363,19 @@ def write_schedule(device_sn, groups):
 
 
 def apply_schedule(device_sn, current_payload, existing, desired, now):
-    if group_signature(existing) == group_signature(desired):
+    existing_payload = outbound_groups(existing)
+    desired_payload = outbound_groups(desired)
+    if group_signature(existing_payload) == group_signature(desired_payload):
         return "already matched", None
     path = backup(current_payload, now)
     try:
-        write_schedule(device_sn, desired)
-        verify_schedule(device_sn, desired)
+        write_schedule(device_sn, desired_payload)
+        verify_schedule(device_sn, desired_payload)
         return "written and verified", path
     except Exception as original_error:
         try:
-            write_schedule(device_sn, existing)
-            verify_schedule(device_sn, existing)
+            write_schedule(device_sn, existing_payload)
+            verify_schedule(device_sn, existing_payload)
         except Exception as rollback_error:
             raise RuntimeError(
                 f"Schedule change failed and rollback failed: {original_error}; "

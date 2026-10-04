@@ -61,6 +61,32 @@ class JointControllerTests(unittest.TestCase):
         self.assertEqual(managed[0]["workMode"], "ForceCharge")
         self.assertEqual(managed[0]["extraParam"]["maxSoc"], 62.6)
 
+    def test_all_day_self_use_fallback_is_never_sent_with_charge(self):
+        fallback = group(0, 23, "SelfUse")
+        fallback["endMinute"] = 59
+        fallback["isRemainMode"] = True
+        desired = controller.desired_groups(
+            [fallback, self.unmanaged], plan(), "charge", 40.0
+        )
+
+        self.assertFalse(any(controller.default_self_use(item) for item in desired))
+        self.assertEqual(desired[0], self.unmanaged)
+        self.assertEqual(len([item for item in desired if controller.managed(item)]), 1)
+
+    def test_all_day_self_use_fallback_is_ignored_during_readback(self):
+        fallback = group(0, 23, "SelfUse")
+        fallback["endMinute"] = 59
+        explicit = group(17, 21, "ForceDischarge", 45.0)
+        self.assertEqual(
+            controller.group_signature([fallback, explicit]),
+            controller.group_signature([explicit]),
+        )
+
+    def test_disabled_groups_are_not_resent(self):
+        disabled = group(17, 21, "ForceDischarge", 45.0)
+        disabled["enable"] = False
+        self.assertEqual(controller.outbound_groups([disabled]), [])
+
     def test_charge_target_uses_live_soc_and_meter_side_grid_energy(self):
         desired = controller.desired_groups(self.existing, plan(), "charge", 23.0)
         charge = next(item for item in desired if controller.managed(item))
@@ -194,8 +220,33 @@ class JointControllerTests(unittest.TestCase):
 
         self.assertEqual(write.call_count, 2)
         self.assertEqual(write.call_args_list[0].args[1], desired)
-        self.assertEqual(write.call_args_list[1].args[1], self.existing)
+        self.assertEqual(
+            write.call_args_list[1].args[1],
+            controller.outbound_groups(self.existing),
+        )
         self.assertEqual(verify.call_count, 2)
+
+    def test_cleanup_sends_empty_list_not_all_day_self_use(self):
+        fallback = group(0, 23, "SelfUse")
+        fallback["endMinute"] = 59
+        managed_period = group(17, 20, "ForceDischarge", 45.0)
+        managed_period["startMinute"] = 5
+        managed_period["endMinute"] = 55
+        now = datetime(2026, 10, 5, 21, 0, tzinfo=controller.TZ)
+
+        desired = controller.desired_groups(
+            [fallback, managed_period], None, "watchdog", 50.0
+        )
+        with patch.object(controller, "backup", return_value="backup.json"), patch.object(
+            controller, "write_schedule"
+        ) as write, patch.object(
+            controller, "verify_schedule", return_value=[]
+        ):
+            controller.apply_schedule(
+                "device", {"result": {}}, [fallback, managed_period], desired, now
+            )
+
+        self.assertEqual(write.call_args.args[1], [])
 
     def test_schedule_verification_ignores_foxess_non_control_fields(self):
         expected = group(17, 21, "ForceDischarge", 45.0)
