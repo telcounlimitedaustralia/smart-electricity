@@ -40,6 +40,23 @@ EXPORT_SLOTS = {
 }
 MANAGED_SLOTS = CHARGE_SLOTS | EXPORT_SLOTS
 
+# FoxESS disables the scheduler after a verified groups=[] cleanup.  The next
+# morning therefore has no active group from which to copy extraParam.  These
+# are the parameter values read back from this H3-10.0-Smart installation and
+# previously accepted by FoxESS for both ForceCharge and ForceDischarge.  SOC
+# fields are replaced with the fresh calculated target before every write.
+VERIFIED_EMPTY_SCHEDULER_EXTRA = {
+    "fdPwr": 10000.0,
+    "minSocOnGrid": MIN_SOC,
+    "pvLimit": 300000.0,
+    "reactivePower": 0.0,
+    "exportLimit": 300000.0,
+    "fdSoc": MIN_SOC,
+    "importLimit": 300000.0,
+    "secondWorkMode": "SelfUse",
+    "maxSoc": 100.0,
+}
+
 
 def parse_timestamp(value):
     stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
@@ -220,6 +237,7 @@ def scope_managed(group, scope):
 
 
 def base_extra(groups):
+    """Return a verified parameter set even when cleanup left no periods."""
     for group in groups:
         extra = group.get("extraParam")
         if isinstance(extra, dict):
@@ -228,7 +246,7 @@ def base_extra(groups):
                 raise RuntimeError("Scheduler template has no verified discharge power")
             result.update({"minSocOnGrid": MIN_SOC, "secondWorkMode": "SelfUse"})
             return result
-    raise RuntimeError("No scheduler parameter template available")
+    return deepcopy(VERIFIED_EMPTY_SCHEDULER_EXTRA)
 
 
 def desired_groups(existing, plan, phase, live_soc, enabled=True):

@@ -62,6 +62,31 @@ class JointControllerTests(unittest.TestCase):
         self.assertEqual(managed[0]["extraParam"]["maxSoc"], 62.6)
         self.assertEqual(managed[0]["extraParam"]["fdSoc"], 62.6)
 
+    def test_empty_scheduler_can_create_first_charge_after_cleanup(self):
+        desired = controller.desired_groups([], plan(), "charge", 23.0)
+
+        self.assertEqual(len(desired), 1)
+        charge = desired[0]
+        self.assertEqual(controller.slot(charge), (10, 5, 13, 55))
+        self.assertEqual(charge["workMode"], "ForceCharge")
+        self.assertEqual(charge["extraParam"]["fdPwr"], 10000.0)
+        self.assertEqual(charge["extraParam"]["fdSoc"], 45.6)
+        self.assertEqual(charge["extraParam"]["maxSoc"], 45.6)
+        self.assertEqual(charge["extraParam"]["secondWorkMode"], "SelfUse")
+        self.assertFalse(any(controller.default_self_use(item) for item in desired))
+
+    def test_empty_scheduler_can_create_first_export_after_cleanup(self):
+        desired = controller.desired_groups([], plan(), "export", 90.0)
+
+        self.assertEqual(len(desired), 1)
+        export = desired[0]
+        self.assertEqual(controller.slot(export), (17, 5, 20, 55))
+        self.assertEqual(export["workMode"], "ForceDischarge")
+        self.assertEqual(export["extraParam"]["fdPwr"], 10000.0)
+        self.assertEqual(export["extraParam"]["fdSoc"], 59.9)
+        self.assertEqual(export["extraParam"]["secondWorkMode"], "SelfUse")
+        self.assertFalse(any(controller.default_self_use(item) for item in desired))
+
     def test_all_day_self_use_fallback_is_never_sent_with_charge(self):
         fallback = group(0, 23, "SelfUse")
         fallback["endMinute"] = 59
