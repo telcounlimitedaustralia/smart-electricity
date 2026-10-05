@@ -109,10 +109,10 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
-        self.assertIn("Optimizer Decision Review", body)
-        self.assertIn("Frozen control plan", body)
-        self.assertIn("Latest live preview", body)
-        self.assertIn("ML forecast performance", body)
+        self.assertIn("My Battery Plan", body)
+        self.assertIn("What will happen today?", body)
+        self.assertIn("Seven-day plan", body)
+        self.assertIn("Show technical details", body)
 
     def test_audit_api_returns_frozen_plan_live_state_and_execution(self):
         with patch.object(dashboard_app, "DB", self.db_path), patch.object(
