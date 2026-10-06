@@ -138,6 +138,39 @@ class JointControllerTests(unittest.TestCase):
         self.assertEqual(export["workMode"], "ForceDischarge")
         self.assertGreaterEqual(export["extraParam"]["fdSoc"], 45.0)
 
+    def test_export_replaces_overlapping_same_mode_period(self):
+        previous = group(17, 20, "ForceDischarge", 49.0)
+        previous["startMinute"] = 5
+        previous["endMinute"] = 10
+
+        desired = controller.desired_groups(
+            [self.unmanaged, previous], plan(export_cutoff_soc=45.0), "export", 95.0
+        )
+
+        discharge = [
+            item for item in desired
+            if item["workMode"] == "ForceDischarge"
+        ]
+        self.assertEqual(len(discharge), 1)
+        self.assertEqual(controller.slot(discharge[0]), (17, 5, 20, 55))
+        self.assertEqual(discharge[0]["extraParam"]["fdSoc"], 64.9)
+        self.assertEqual(desired[0], self.unmanaged)
+
+    def test_charge_replaces_overlapping_same_mode_period(self):
+        previous = group(10, 13, "ForceCharge", 50.0)
+        previous["startMinute"] = 5
+        previous["endMinute"] = 40
+
+        desired = controller.desired_groups(
+            [self.unmanaged, previous], plan(charge_kwh=10.0), "charge", 30.0
+        )
+
+        charge = [item for item in desired if item["workMode"] == "ForceCharge"]
+        self.assertEqual(len(charge), 1)
+        self.assertEqual(controller.slot(charge[0]), (10, 5, 13, 55))
+        self.assertEqual(charge[0]["extraParam"]["fdSoc"], 52.6)
+        self.assertEqual(desired[0], self.unmanaged)
+
     def test_export_is_not_armed_when_reserve_uses_available_energy(self):
         protected = plan(export_cutoff_soc=60.0, plan_json=json.dumps({
             "daily": {"required_post_export_soc": 70.0}

@@ -191,8 +191,23 @@ def slot(group):
     )
 
 
+def normalised_mode(group):
+    return str(group.get("workMode") or "").replace("-", "").replace("_", "").lower()
+
+
+def overlaps_slot(group, target):
+    start_hour, start_minute, end_hour, end_minute = slot(group)
+    if min(start_hour, start_minute, end_hour, end_minute) < 0:
+        return False
+    start = start_hour * 60 + start_minute
+    end = end_hour * 60 + end_minute
+    target_start = target[0] * 60 + target[1]
+    target_end = target[2] * 60 + target[3]
+    return start < target_end and target_start < end
+
+
 def managed(group):
-    return slot(group) in MANAGED_SLOTS
+    return scope_managed(group, "charge") or scope_managed(group, "export")
 
 
 def default_self_use(group):
@@ -202,7 +217,7 @@ def default_self_use(group):
     ``isRemainMode`` marker.  Sending this group back through OpenAPI can turn
     it into an ordinary overlapping schedule, so it must never be round-tripped.
     """
-    mode = str(group.get("workMode") or "").replace("-", "").replace("_", "").lower()
+    mode = normalised_mode(group)
     return (
         mode == "selfuse"
         and slot(group) in {(0, 0, 23, 59), (0, 0, 24, 0)}
@@ -230,10 +245,20 @@ def outbound_groups(groups):
 def scope_managed(group, scope):
     current = slot(group)
     if scope == "charge":
-        return current in CHARGE_SLOTS
+        return current in CHARGE_SLOTS or (
+            normalised_mode(group) == "forcecharge"
+            and overlaps_slot(group, CHARGE_SLOT)
+        )
     if scope == "export":
-        return current in EXPORT_SLOTS
-    return current in MANAGED_SLOTS
+        return current in EXPORT_SLOTS or (
+            normalised_mode(group) == "forcedischarge"
+            and overlaps_slot(group, EXPORT_SLOT)
+        )
+    return (
+        current in MANAGED_SLOTS
+        or scope_managed(group, "charge")
+        or scope_managed(group, "export")
+    )
 
 
 def base_extra(groups):
@@ -250,7 +275,7 @@ def base_extra(groups):
 
 
 def desired_groups(existing, plan, phase, live_soc, enabled=True):
-    """Return the complete schedule, preserving all non-owned periods."""
+    """Return the complete schedule, replacing overlapping same-mode periods."""
     groups = [
         deepcopy(group)
         for group in existing
