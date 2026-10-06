@@ -296,6 +296,85 @@ class JointOptimisationTests(unittest.TestCase):
             optimiser.MIN_KWH,
         )
 
+    def test_cash_polish_exports_surplus_above_dynamic_reserve(self):
+        """Do not retain an unexplained buffer above the overnight reserve."""
+        first = datetime(2026, 10, 7)
+        second = datetime(2026, 10, 8)
+        hours = []
+
+        for start in (first, second):
+            day = start.date().isoformat()
+            for hour in range(24):
+                load = 0.0
+                solar = 0.0
+
+                if day == "2026-10-07" and 17 <= hour < 21:
+                    load = 0.67
+                elif day == "2026-10-07" and hour >= 21:
+                    load = 0.75
+                elif day == "2026-10-08" and hour < 9:
+                    load = 0.90
+
+                # Useful solar begins at 09:00 and the later surplus restores
+                # the battery, so day-one energy only needs to bridge overnight.
+                if day == "2026-10-08" and hour == 9:
+                    solar = 2.0
+                elif day == "2026-10-08" and hour == 12:
+                    solar = 50.0
+
+                hours.append({
+                    "timestamp": (start + timedelta(hours=hour)).isoformat(),
+                    "day": day,
+                    "hour": hour,
+                    "solar_kwh": solar,
+                    "load_kwh": load,
+                })
+
+        days = ["2026-10-07", "2026-10-08"]
+        context = optimiser.build_simulation_context(hours)
+        charges = {day: 0.0 for day in days}
+        exports = {"2026-10-07": 18.0, "2026-10-08": 0.0}
+
+        def import_rate(ts):
+            return (11.11 if 10 <= ts.hour < 14 else 42.0, "test")
+
+        def export_rate(ts):
+            return (28.0 if 17 <= ts.hour < 21 else 5.0, "test")
+
+        with patch.object(optimiser, "import_rate", side_effect=import_rate), patch.object(
+            optimiser, "export_rate", side_effect=export_rate
+        ):
+            initial = optimiser.simulate(
+                hours,
+                optimiser.BATTERY_KWH,
+                charges=charges,
+                exports=exports,
+                context=context,
+            )
+            score, polished, _, polished_exports = optimiser.polish_safe_cash_export(
+                hours,
+                optimiser.BATTERY_KWH,
+                days,
+                charges,
+                exports,
+                baseline_pre10={day: 0.0 for day in days},
+                context=context,
+            )
+
+        first_day = polished["daily"]["2026-10-07"]
+        self.assertIsNotNone(score)
+        self.assertEqual(polished_exports["2026-10-07"], 22.0)
+        self.assertGreater(polished["net_value"], initial["net_value"])
+        self.assertGreaterEqual(
+            first_day["post_export_energy"],
+            first_day["required_post_export_energy"] - 0.05,
+        )
+        self.assertLess(
+            first_day["post_export_energy"]
+            - first_day["required_post_export_energy"],
+            1.0 / optimiser.DISCHARGE_EFF,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

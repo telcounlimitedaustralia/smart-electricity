@@ -1197,6 +1197,98 @@ def optimise_export_only_baseline(
     return score, result, exports
 
 
+def polish_safe_cash_export(
+    hours,
+    start_energy,
+    days,
+    charges,
+    exports,
+    baseline_pre10,
+    context,
+    max_passes=2,
+):
+    """Export any remaining safe surplus when it improves real cash value.
+
+    The joint search uses retained end-of-horizon energy in its planning score
+    to avoid emptying the battery at the artificial forecast boundary.  That
+    future-value term must not leave saleable energy above a day's calculated
+    post-export reserve when exporting it increases cash, creates no extra
+    expensive morning import, and the complete horizon remains safe.
+
+    Only exports are increased here.  Cheap-charge decisions remain those
+    selected by the joint optimiser, and every candidate is checked by the
+    same full-horizon simulator and reserve constraints.
+    """
+
+    charges = dict(charges)
+    exports = dict(exports)
+    score, result = score_strategy(
+        hours,
+        start_energy,
+        days,
+        charges,
+        exports,
+        baseline_pre10=baseline_pre10,
+        context=context,
+    )
+    if score is None:
+        raise RuntimeError("Joint strategy fails reserve constraints")
+
+    export_options = candidate_values(
+        MAX_EXPORT_KW * CONTROL_WINDOW_HOURS
+    )
+
+    for _ in range(max_passes):
+        changed = False
+
+        for day in days:
+            current_export = float(exports[day])
+            best_export = current_export
+            best_cash = float(result["net_value"])
+            best_score = score
+            best_result = result
+
+            for candidate_export in export_options:
+                if candidate_export <= current_export + 0.001:
+                    continue
+
+                trial_exports = dict(exports)
+                trial_exports[day] = candidate_export
+                candidate_score, candidate_result = score_strategy(
+                    hours,
+                    start_energy,
+                    days,
+                    charges,
+                    trial_exports,
+                    baseline_pre10=baseline_pre10,
+                    context=context,
+                )
+                if candidate_score is None:
+                    continue
+
+                delivered = candidate_result["daily"][day]["premium_export"]
+                if delivered < candidate_export - 0.10:
+                    continue
+
+                candidate_cash = float(candidate_result["net_value"])
+                if candidate_cash > best_cash + 0.0001:
+                    best_export = candidate_export
+                    best_cash = candidate_cash
+                    best_score = candidate_score
+                    best_result = candidate_result
+
+            if best_export > current_export + 0.001:
+                exports[day] = best_export
+                score = best_score
+                result = best_result
+                changed = True
+
+        if not changed:
+            break
+
+    return score, result, charges, exports
+
+
 def optimise_horizon(
     hours,
     start_energy,
@@ -1399,16 +1491,15 @@ def optimise_horizon(
         if local_best is not None:
             charges, exports = local_best
 
-    final_score, final_result = (
-        score_strategy(
-            hours,
-            start_energy,
-            days,
-            charges,
-            exports,
-            baseline_pre10=baseline_pre10,
-            context=context,
-        )
+    final_score, final_result, charges, exports = polish_safe_cash_export(
+        hours,
+        start_energy,
+        days,
+        charges,
+        exports,
+        baseline_pre10,
+        context,
+        max_passes=max(2, max_passes),
     )
 
     return {
@@ -1429,7 +1520,7 @@ def optimise_horizon(
             "SAFE_EXPORT_ONLY",
 
         "search_method":
-            "JOINT_DAILY_PAIRS_PLUS_ADJACENT_DAY_LOOKAHEAD",
+            "JOINT_DAILY_PAIRS_PLUS_ADJACENT_DAY_LOOKAHEAD_PLUS_SAFE_CASH_EXPORT",
 
         "final_score":
             final_score,
