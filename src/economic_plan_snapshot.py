@@ -67,6 +67,14 @@ def ensure_schema(conn):
     """)
 
 
+def first_numeric(*values):
+    """Return the first available numeric milestone from a partial-day plan."""
+    for value in values:
+        if value is not None:
+            return float(value)
+    raise RuntimeError("Joint plan has no usable battery-energy milestone")
+
+
 def build_plan(now=None):
     now = now or datetime.now(TZ)
     hours, ml = optimiser.build_hours(now=now)
@@ -85,17 +93,36 @@ def build_plan(now=None):
         for day in result["days"]:
             d = result["final_result"]["daily"][day]
             forecast = ml[day]
-            charge = float(result["charges"][day])
-            export = float(result["exports"][day])
-            post_shoulder = float(
-                d.get("post_shoulder_energy") or d["pre_export_energy"]
+            # Freeze what the simulation can still perform, not the original
+            # full-window candidate.  They differ when a manual refresh occurs
+            # after the shoulder or premium window has already started.
+            charge = first_numeric(
+                d.get("grid_charge"), result["charges"].get(day)
             )
-            pre_export = float(d["pre_export_energy"])
+            export = first_numeric(
+                d.get("premium_export"), result["exports"].get(day)
+            )
+            post_shoulder = first_numeric(
+                d.get("post_shoulder_energy"),
+                d.get("pre_export_energy"),
+                d.get("start_energy"),
+                d.get("end_energy"),
+            )
+            pre_export = first_numeric(
+                d.get("pre_export_energy"),
+                d.get("start_energy"),
+                post_shoulder,
+                d.get("end_energy"),
+            )
             end_energy = float(d["end_energy"])
-            cutoff_energy = max(
-                optimiser.MIN_KWH,
-                pre_export - export / optimiser.DISCHARGE_EFF,
-            )
+            post_export = d.get("post_export_energy")
+            if post_export is not None:
+                cutoff_energy = max(optimiser.MIN_KWH, float(post_export))
+            else:
+                cutoff_energy = max(
+                    optimiser.MIN_KWH,
+                    pre_export - export / optimiser.DISCHARGE_EFF,
+                )
             if charge > 0 and export > 0:
                 reason = "Buy cheap energy; export only the safe premium surplus."
             elif charge > 0:

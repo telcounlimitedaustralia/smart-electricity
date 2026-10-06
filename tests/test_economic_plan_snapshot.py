@@ -5,6 +5,7 @@ import threading
 import time
 import unittest
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import patch
 
 import economic_plan_snapshot as snapshot
@@ -51,6 +52,64 @@ class EconomicPlanSnapshotTests(unittest.TestCase):
 
             self.assertEqual(value, 7)
             self.assertEqual(mode.lower(), "wal")
+
+    def test_late_day_plan_uses_live_fallbacks_and_remaining_actions(self):
+        now = datetime(2026, 10, 6, 19, 40, tzinfo=snapshot.TZ)
+        day = "2026-10-06"
+        ml = {
+            day: {
+                "predicted_load_kwh": 20.0,
+                "safe_load_kwh": 24.0,
+            }
+        }
+        daily = {
+            "solar": 1.0,
+            "start_energy": 20.0,
+            "post_shoulder_energy": None,
+            "pre_export_energy": None,
+            "post_export_energy": 17.0,
+            "end_energy": 16.0,
+            "grid_charge": 0.0,
+            "premium_export": 4.0,
+            "grid_import": 0.0,
+        }
+        result = {
+            "days": [day],
+            "charges": {day: 14.0},
+            "exports": {day: 21.0},
+            "final_score": 2.0,
+            "baseline_score": 1.0,
+            "final_result": {"daily": {day: daily}},
+        }
+
+        with tempfile.TemporaryDirectory() as folder:
+            db_path = Path(folder) / "energy.db"
+
+            def write_to_fixture(callback):
+                conn = sqlite3.connect(db_path)
+                callback(conn)
+                conn.commit()
+                conn.close()
+
+            with patch.object(snapshot.optimiser, "build_hours", return_value=([{}], ml)), patch.object(
+                snapshot.optimiser, "initial_energy", return_value=(20.0, 47.6)
+            ), patch.object(
+                snapshot.optimiser, "optimise_horizon", return_value=result
+            ), patch.object(snapshot, "write_with_retry", side_effect=write_to_fixture):
+                snapshot.build_plan(now=now)
+
+            conn = sqlite3.connect(db_path)
+            row = conn.execute(
+                "SELECT charge_kwh, charge_target_soc, expected_5pm_soc, "
+                "export_kwh, export_cutoff_soc FROM economic_plan_actions"
+            ).fetchone()
+            conn.close()
+
+        self.assertEqual(row[0], 0.0)
+        self.assertAlmostEqual(row[1], 20.0 / snapshot.optimiser.BATTERY_KWH * 100.0)
+        self.assertAlmostEqual(row[2], 20.0 / snapshot.optimiser.BATTERY_KWH * 100.0)
+        self.assertEqual(row[3], 4.0)
+        self.assertAlmostEqual(row[4], 17.0 / snapshot.optimiser.BATTERY_KWH * 100.0)
 
 
 if __name__ == "__main__":
