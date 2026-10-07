@@ -128,6 +128,8 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn("Technical details", body)
         self.assertIn("stopping at", body)
         self.assertIn("Battery when calculated", body)
+        self.assertIn('class="journey-pct"', body)
+        self.assertIn('class="journey-kwh"', body)
         self.assertNotIn("Morning battery", body)
 
     def test_audit_api_returns_frozen_plan_live_state_and_execution(self):
