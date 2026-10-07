@@ -118,7 +118,13 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn("Forecast versus actual", body)
         self.assertIn("Total solar forecast", body)
         self.assertIn("Home use until recharge", body)
-        self.assertIn('class="section-toggle"', body)
+        self.assertIn('class="dashboard-section"', body)
+        self.assertNotIn("<details", body)
+        self.assertNotIn("<summary", body)
+        self.assertLess(
+            body.index("Why today’s plan makes sense"),
+            body.index("Seven-day plan"),
+        )
         self.assertIn("Technical details", body)
         self.assertIn("stopping at", body)
         self.assertIn("Battery when calculated", body)
