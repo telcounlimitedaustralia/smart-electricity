@@ -153,6 +153,10 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn('class="bridge-kwh"', body)
         self.assertIn('id="bridgeReserve"', body)
         self.assertIn('id="bridgeRevenue"', body)
+        self.assertIn('id="mlWinRing"', body)
+        self.assertIn('id="loadErrorBar"', body)
+        self.assertIn('id="solarErrorBar"', body)
+        self.assertIn("lower is better", body)
         self.assertNotIn("Morning battery", body)
 
     def test_audit_api_returns_frozen_plan_live_state_and_execution(self):
