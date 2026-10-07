@@ -3,8 +3,10 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 os.environ.setdefault("FOXESS_API_KEY", "test-token")
 os.environ["FOXESS_CONTROL_MODE"] = "joint"
@@ -25,6 +27,11 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.db_path = Path(self.temp_dir.name) / "energy.db"
+        self.solar_start_timestamp = datetime.now(
+            ZoneInfo("Australia/Sydney")
+        ).replace(
+            hour=6, minute=30, second=0, microsecond=0
+        ).isoformat(timespec="seconds")
         self._create_fixture_database()
         dashboard_app.app.config.update(TESTING=True)
         self.client = dashboard_app.app.test_client()
@@ -104,6 +111,12 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
             "VALUES (?, ?, ?, ?, ?, ?)",
             ("2026-10-05T10:10:00+11:00", 35.0, 4.2, 1.3, 8.4, 0.0),
         )
+        conn.execute(
+            "INSERT INTO foxess_live "
+            "(timestamp, battery_soc, pv_kw, load_kw, grid_import_kw, grid_export_kw) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (self.solar_start_timestamp, 35.0, 0.4, 1.2, 0.8, 0.0),
+        )
         conn.commit()
         conn.close()
 
@@ -116,6 +129,8 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn("Current recommendation for today", body)
         self.assertIn("Seven-day plan", body)
         self.assertIn("Forecast versus actual", body)
+        self.assertIn("Today’s energy journey", body)
+        self.assertIn('id="dayActivity"', body)
         self.assertIn("Total solar forecast", body)
         self.assertIn("Home use until recharge", body)
         self.assertIn('class="dashboard-section"', body)
@@ -163,6 +178,12 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
             "FULL_DAY_PROTECTED_FORECAST",
         )
         self.assertEqual(data["live"]["battery_soc"], 35.0)
+        self.assertEqual(
+            data["live"]["solar_start_timestamp"],
+            self.solar_start_timestamp,
+        )
+        self.assertEqual(data["live"]["solar_start_soc"], 35.0)
+        self.assertAlmostEqual(data["live"]["solar_start_kwh"], 14.7)
         self.assertEqual(data["events"][0]["status"], "verified")
         self.assertEqual(data["control"]["schedule"]["import_window"], "10:05-13:55")
 

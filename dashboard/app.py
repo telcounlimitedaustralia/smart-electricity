@@ -324,6 +324,59 @@ def optimizer_audit():
             FROM foxess_live ORDER BY id DESC LIMIT 1
         """).fetchone()
         live = dict(row) if row else None
+        solar_start = conn.execute("""
+            SELECT timestamp, battery_soc
+            FROM foxess_live
+            WHERE substr(timestamp, 1, 10) = ?
+              AND pv_kw >= 0.2
+              AND battery_soc IS NOT NULL
+            ORDER BY timestamp
+            LIMIT 1
+        """, (today,)).fetchone()
+        if live is not None and solar_start:
+            live["solar_start_timestamp"] = solar_start["timestamp"]
+            live["solar_start_soc"] = solar_start["battery_soc"]
+            live["solar_start_kwh"] = (
+                float(solar_start["battery_soc"])
+                / 100.0
+                * ECONOMIC_BATTERY_KWH
+            )
+        if live is not None:
+            milestones = {}
+            for label, hour, minute in (
+                ("10:05", 10, 5),
+                ("13:55", 13, 55),
+                ("17:05", 17, 5),
+                ("20:55", 20, 55),
+            ):
+                target = now.replace(
+                    hour=hour,
+                    minute=minute,
+                    second=0,
+                    microsecond=0,
+                )
+                if now < target:
+                    continue
+                milestone = conn.execute("""
+                    SELECT timestamp, battery_soc
+                    FROM foxess_live
+                    WHERE substr(timestamp, 1, 10) = ?
+                      AND battery_soc IS NOT NULL
+                      AND ABS(
+                          strftime('%s', timestamp) - strftime('%s', ?)
+                      ) <= 1200
+                    ORDER BY ABS(
+                        strftime('%s', timestamp) - strftime('%s', ?)
+                    )
+                    LIMIT 1
+                """, (
+                    today,
+                    target.isoformat(timespec="seconds"),
+                    target.isoformat(timespec="seconds"),
+                )).fetchone()
+                if milestone:
+                    milestones[label] = dict(milestone)
+            live["day_milestones"] = milestones
     conn.close()
 
     switches = get_switches(DB)
