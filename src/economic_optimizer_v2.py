@@ -1215,9 +1215,9 @@ def polish_safe_cash_export(
     post-export reserve when exporting it increases cash, creates no extra
     expensive morning import, and the complete horizon remains safe.
 
-    Only exports are increased here.  Cheap-charge decisions remain those
-    selected by the joint optimiser, and every candidate is checked by the
-    same full-horizon simulator and reserve constraints.
+    The next day's cheap charge may also increase when that is the profitable
+    way to replace energy sold today.  Every candidate is checked by the same
+    full-horizon simulator and reserve constraints.
     """
 
     charges = dict(charges)
@@ -1237,13 +1237,27 @@ def polish_safe_cash_export(
     export_options = candidate_values(
         MAX_EXPORT_KW * CONTROL_WINDOW_HOURS
     )
+    charge_options = candidate_values(
+        MAX_GRID_CHARGE_KW * CONTROL_WINDOW_HOURS
+    )
 
     for _ in range(max_passes):
         changed = False
 
-        for day in days:
+        for day_index, day in enumerate(days):
             current_export = float(exports[day])
             best_export = current_export
+            next_day = (
+                days[day_index + 1]
+                if day_index + 1 < len(days)
+                else None
+            )
+            current_next_charge = (
+                float(charges[next_day])
+                if next_day is not None
+                else None
+            )
+            best_next_charge = current_next_charge
             best_cash = float(result["net_value"])
             best_score = score
             best_result = result
@@ -1252,33 +1266,54 @@ def polish_safe_cash_export(
                 if candidate_export <= current_export + 0.001:
                     continue
 
-                trial_exports = dict(exports)
-                trial_exports[day] = candidate_export
-                candidate_score, candidate_result = score_strategy(
-                    hours,
-                    start_energy,
-                    days,
-                    charges,
-                    trial_exports,
-                    baseline_pre10=baseline_pre10,
-                    context=context,
-                )
-                if candidate_score is None:
-                    continue
+                next_charge_options = [None]
+                if next_day is not None:
+                    next_charge_options = [
+                        value for value in charge_options
+                        if value >= current_next_charge - 0.001
+                    ]
 
-                delivered = candidate_result["daily"][day]["premium_export"]
-                if delivered < candidate_export - 0.10:
-                    continue
+                for candidate_next_charge in next_charge_options:
+                    trial_exports = dict(exports)
+                    trial_exports[day] = candidate_export
+                    trial_charges = dict(charges)
+                    if next_day is not None:
+                        trial_charges[next_day] = candidate_next_charge
 
-                candidate_cash = float(candidate_result["net_value"])
-                if candidate_cash > best_cash + 0.0001:
-                    best_export = candidate_export
-                    best_cash = candidate_cash
-                    best_score = candidate_score
-                    best_result = candidate_result
+                    candidate_score, candidate_result = score_strategy(
+                        hours,
+                        start_energy,
+                        days,
+                        trial_charges,
+                        trial_exports,
+                        baseline_pre10=baseline_pre10,
+                        context=context,
+                    )
+                    if candidate_score is None:
+                        continue
+
+                    delivered = candidate_result["daily"][day]["premium_export"]
+                    if delivered < candidate_export - 0.10:
+                        continue
+                    if next_day is not None and candidate_next_charge >= 0.5:
+                        delivered_charge = candidate_result["daily"][next_day][
+                            "grid_charge"
+                        ]
+                        if delivered_charge < candidate_next_charge - 0.10:
+                            continue
+
+                    candidate_cash = float(candidate_result["net_value"])
+                    if candidate_cash > best_cash + 0.0001:
+                        best_export = candidate_export
+                        best_next_charge = candidate_next_charge
+                        best_cash = candidate_cash
+                        best_score = candidate_score
+                        best_result = candidate_result
 
             if best_export > current_export + 0.001:
                 exports[day] = best_export
+                if next_day is not None:
+                    charges[next_day] = best_next_charge
                 score = best_score
                 result = best_result
                 changed = True

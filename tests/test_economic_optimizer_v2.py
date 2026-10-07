@@ -375,6 +375,57 @@ class JointOptimisationTests(unittest.TestCase):
             1.0 / optimiser.DISCHARGE_EFF,
         )
 
+    def test_cash_polish_coordinates_today_export_with_tomorrow_charge(self):
+        """Extra sale may require a larger cheap recharge on the next day."""
+        days = ["2026-10-07", "2026-10-08"]
+        charges = {"2026-10-07": 0.0, "2026-10-08": 5.0}
+        exports = {"2026-10-07": 18.0, "2026-10-08": 16.0}
+
+        def fake_score(
+            hours,
+            start_energy,
+            score_days,
+            trial_charges,
+            trial_exports,
+            baseline_pre10=None,
+            context=None,
+        ):
+            first_export = float(trial_exports["2026-10-07"])
+            second_charge = float(trial_charges["2026-10-08"])
+            required_charge = 5.0 + max(0.0, first_export - 18.0) / 0.95
+
+            if first_export > 22.0 or second_charge + 0.001 < required_charge:
+                return None, {"daily": {}}
+
+            cash = first_export * 0.28 - second_charge * 0.1111
+            result = {
+                "net_value": cash,
+                "daily": {
+                    "2026-10-07": {"premium_export": first_export},
+                    "2026-10-08": {
+                        "premium_export": float(trial_exports["2026-10-08"]),
+                        "grid_charge": second_charge,
+                    },
+                },
+            }
+            return cash, result
+
+        with patch.object(optimiser, "score_strategy", side_effect=fake_score):
+            _, _, polished_charges, polished_exports = (
+                optimiser.polish_safe_cash_export(
+                    hours=[],
+                    start_energy=optimiser.BATTERY_KWH,
+                    days=days,
+                    charges=charges,
+                    exports=exports,
+                    baseline_pre10={day: 0.0 for day in days},
+                    context={},
+                )
+            )
+
+        self.assertEqual(polished_exports["2026-10-07"], 22.0)
+        self.assertEqual(polished_charges["2026-10-08"], 10.0)
+
 
 if __name__ == "__main__":
     unittest.main()
