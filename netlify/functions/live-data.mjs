@@ -7,6 +7,7 @@ const ALLOWED_VIEWS = new Set([
   "strategy-validation",
   "ml-performance",
   "economic-optimizer",
+  "optimizer-audit",
 ]);
 
 function json(status, body) {

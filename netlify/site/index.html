@@ -1,123 +1,317 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Smart Electricity — Read-only</title>
-    <link rel="stylesheet" href="styles.css" />
-    <script type="module" src="app.js"></script>
-  </head>
-  <body>
-    <main>
-      <header>
-        <div>
-          <p class="eyebrow">LIVE · READ-ONLY</p>
-          <h1><span aria-hidden="true">⚡</span> Smart Electricity</h1>
-          <p id="updated">Connecting to live data…</p>
-        </div>
-        <div class="actions">
-          <span id="access">Public · read-only</span>
-          <button id="refresh">Refresh</button>
-        </div>
-      </header>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>My Battery Plan</title>
+  <style>
+    :root{
+      --ink:#162238;--muted:#63728a;--line:#cad7e5;--panel:#fff;--soft:#f1f5fa;
+      --page:#e6edf5;--nav:#111c31;--nav2:#172944;--blue:#1769e0;--green:#087a55;
+      --green-soft:#e8f7f1;--amber:#945300;--amber-soft:#fff4dd;--red:#b63643;
+      --red-soft:#fff0f1;--shadow:0 8px 28px rgba(28,46,78,.08);
+    }
+    *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:400 14px/1.5 "Segoe UI",Arial,Helvetica,sans-serif}
+    button,a{font:inherit}.topbar{background:linear-gradient(125deg,var(--nav),var(--nav2));color:#fff;padding:20px 26px 28px}.toprow{max-width:1380px;margin:auto;display:flex;justify-content:space-between;align-items:center;gap:18px}.brand{display:flex;align-items:center;gap:13px}.mark{width:44px;height:44px;border-radius:14px;background:linear-gradient(145deg,#42d6bd,#2686ff);display:grid;place-items:center;font-size:22px}.topbar h1{font-size:25px;line-height:1.15;margin:0}.subtitle{color:#b9c8dc;margin:5px 0 0}.actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.button,.top-link,.status-pill{border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:8px 12px;color:#edf4ff;background:rgba(255,255,255,.08);font-weight:700;text-decoration:none}.button{cursor:pointer}.button:hover,.top-link:hover{background:rgba(255,255,255,.14)}.status-pill.good{color:#abf2d6;background:rgba(31,190,130,.16);border-color:rgba(83,222,169,.42)}.status-pill.bad{color:#ffd2d6;background:rgba(190,54,67,.22);border-color:rgba(255,137,147,.45)}
+    .page{max-width:1380px;margin:-14px auto 0;padding:0 20px 52px}.quick-status{position:relative;z-index:2;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;width:max-content;max-width:calc(100% - 24px);margin:-7px auto 4px;padding:6px;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:13px;box-shadow:0 4px 18px rgba(28,46,78,.07)}.chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 10px;color:#46556d;font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:var(--green)}.chip.warn .dot{background:#d58210}.chip.bad .dot{background:var(--red)}
+    .hero,.panel,.table-panel,.dashboard-section{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}.hero{padding:20px}.hero-main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(310px,.8fr);gap:22px;align-items:center}.hero h2,.section-head h2{margin:0;font-size:19px}.answer{font-size:18px;line-height:1.4;font-weight:750;margin:7px 0 0}.answer strong{color:var(--blue)}
+    .solar-summary{display:grid;grid-template-columns:118px minmax(0,1fr);min-height:126px;overflow:hidden;border:1px solid #dce6f2;border-radius:14px;background:#f8fbff}.solar-art{position:relative;display:grid;place-items:center;background:linear-gradient(145deg,#2f64d8,#5547b8);overflow:hidden}.solar-sun{position:absolute;top:18px;left:42px;font-size:46px;line-height:1;filter:drop-shadow(0 3px 5px rgba(0,0,0,.12))}.solar-cloud{position:absolute;left:19px;bottom:17px;font-size:65px;line-height:1;color:#fff;filter:drop-shadow(0 3px 5px rgba(0,0,0,.14))}.solar-copy{padding:11px 14px}.solar-date{display:block;color:var(--muted);font-size:11px}.solar-total{display:inline-block;color:#341467;font-size:23px;line-height:1.15;margin-top:1px}.solar-unit{color:var(--muted);font-size:11px;margin-left:3px}.solar-rating{display:inline-block;margin-left:7px;padding:2px 6px;border-radius:999px;background:#dff5eb;color:var(--green);font-size:9px;text-transform:uppercase;letter-spacing:.04em}.solar-facts{margin:7px 0 0}.solar-facts div{display:flex;justify-content:space-between;gap:12px;border-top:1px solid #e5ebf3;padding-top:3px;margin-top:3px}.solar-facts dt,.solar-facts dd{margin:0;font-size:10px}.solar-facts dt{color:var(--muted)}.solar-facts dd{color:var(--ink);font-weight:600;text-align:right}
+    .day-visual{margin-top:16px;padding:14px 16px 12px;border-radius:13px;background:linear-gradient(105deg,#edf1fb 0%,#fff6df 24%,#fffbe9 51%,#fff0e8 75%,#eef0f8 100%);border:1px solid #dde4ef}.day-visual-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:11px}.day-visual-head b{font-weight:600}.day-visual-head small{color:var(--muted)}.day-track{position:relative;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}.day-track:before{content:"";position:absolute;left:7%;right:7%;top:19px;height:4px;border-radius:999px;background:linear-gradient(90deg,#68738e,#f1a93a 18%,#f0ca39 48%,#f58b4e 72%,#525d79)}.day-moment{position:relative;z-index:1;min-width:0;text-align:center}.day-orb{width:38px;height:38px;margin:0 auto 7px;border-radius:50%;display:grid;place-items:center;font-size:18px;color:#fff;box-shadow:0 3px 10px rgba(35,48,76,.16)}.day-moment.dawn .day-orb{background:#f1a43a}.day-moment.import .day-orb{background:#2476df}.day-moment.solar .day-orb{background:#e7bb23}.day-moment.export .day-orb{background:#159369}.day-moment.sunset .day-orb{background:#e5744f}.day-moment.night .day-orb{background:#4a5675}.day-time{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.03em}.day-moment b{display:block;font-size:12px;margin-top:1px}.day-moment small{display:block;color:var(--muted);font-size:11px;margin-top:2px;line-height:1.3}.day-source{display:inline-block;margin-top:4px;padding:2px 6px;border-radius:999px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}.day-source.actual{background:#dff5eb;color:#087a55}.day-source.forecast{background:#e5efff;color:#245ea8}.day-action{min-height:14px}
+    section{margin-top:20px}.section-head{display:flex;justify-content:space-between;align-items:end;gap:14px;margin:0 2px 9px}.section-head p{color:var(--muted);margin:3px 0 0;max-width:760px}.two-col{display:grid;grid-template-columns:1.48fr .62fr;gap:12px}.panel{padding:17px}.panel h3{font-size:14px;margin:0}.bridge{display:grid;grid-template-columns:minmax(76px,1fr) minmax(44px,.62fr) minmax(76px,1fr) minmax(44px,.62fr) minmax(76px,1fr) minmax(44px,.62fr) minmax(76px,1fr) minmax(44px,.62fr) minmax(76px,1fr);align-items:center;gap:2px;margin-top:15px;min-height:154px}.bridge-node{text-align:center;min-width:0}.bridge-orb{width:44px;height:44px;margin:0 auto 7px;border-radius:50%;display:grid;place-items:center;background:#e8f1ff;color:var(--blue);font-size:19px}.bridge-node.full .bridge-orb{background:#dcf4ea;color:var(--green)}.bridge-node.night .bridge-orb{background:#eee9ff;color:#6543bd}.bridge-label{display:block;color:var(--muted);font-size:10px;line-height:1.25;min-height:25px}.bridge-node>b{display:flex;flex-direction:column;gap:1px;margin-top:3px}.bridge-pct{color:var(--ink);font-size:15px;line-height:1.15}.bridge-kwh{color:var(--muted);font-size:11px;font-weight:400;line-height:1.2}.bridge-source{display:inline-block;margin-top:4px;padding:2px 6px;border-radius:999px;background:#e5efff;color:#245ea8;font-size:9px;text-transform:uppercase}.bridge-source.actual{background:#dff5eb;color:#087a55}.bridge-change{text-align:center;min-width:0}.bridge-change b,.bridge-change small,.bridge-change span{display:block}.bridge-change b{font-size:13px}.bridge-change small{color:var(--muted);font-size:10px}.bridge-change span{color:#b1bdcd;margin-top:3px}.bridge-change.solar b{color:#ad7d00}.bridge-change.buy b{color:var(--blue)}.bridge-change.sell b{color:var(--green)}.bridge-change.home b{color:#6543bd}.bridge-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:13px}.bridge-fact{display:flex;align-items:center;gap:8px;background:var(--soft);border-radius:10px;padding:9px}.bridge-fact>span:first-child{font-size:18px}.bridge-fact b,.bridge-fact small{display:block}.bridge-fact b{font-size:12px}.bridge-fact small{color:var(--muted);font-size:10px;margin-top:1px}.reason-list{display:grid;gap:9px;margin-top:13px}.reason{display:flex;gap:9px;color:var(--muted);font-size:12px;font-weight:400}.check{color:var(--green);font-weight:900}.trust-head{display:flex;align-items:center;gap:12px;margin-top:13px}.grade{width:66px;height:66px;border-radius:50%;display:grid;place-items:center;text-align:center;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:850;flex:0 0 auto}.grade.warn{background:var(--amber-soft);color:var(--amber)}.trust-copy b{display:block;font-size:15px}.trust-copy span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.ml-performance{display:grid;grid-template-columns:112px minmax(0,1fr);gap:13px;align-items:center;margin-top:16px}.win-visual{text-align:center}.win-ring{--win:0;width:94px;height:94px;margin:0 auto;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--green) calc(var(--win)*1%),#dfe7f1 0)}.win-ring.unavailable{background:#e7edf4}.win-ring>span{width:72px;height:72px;border-radius:50%;display:grid;place-content:center;background:var(--panel)}.win-ring b,.win-ring small{display:block}.win-ring b{font-size:19px}.win-ring small{color:var(--muted);font-size:10px}.win-caption{display:block;color:var(--muted);font-size:10px;line-height:1.3;margin-top:7px}.error-visual{min-width:0}.error-row+.error-row{margin-top:12px}.error-label{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.error-label span{color:var(--muted);font-size:11px}.error-label b{font-size:13px}.error-track{height:10px;margin-top:5px;border-radius:999px;background:#e2e9f2;overflow:hidden}.error-track i{display:block;height:100%;min-width:0;border-radius:999px;background:var(--blue)}.error-row.solar .error-track i{background:#60c7b0}.error-note{display:block;color:var(--muted);font-size:10px;line-height:1.3;margin-top:11px}
+    .table-panel{padding:4px 14px;overflow:hidden}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:1420px}th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:11px 8px;border-bottom:1px solid var(--line);white-space:nowrap}th.group{background:#edf4fb;color:#31506f;text-align:center;border-left:1px solid var(--line)}td{padding:12px 8px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}.today-row td{background:var(--green-soft)}.cell-main{display:block;font-weight:800;white-space:nowrap}.cell-sub{display:block;color:var(--muted);font-size:11px;margin-top:2px}.cell-label{display:inline-block;min-width:48px;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}.active-tag{display:inline-block;color:var(--green);font-size:10px;font-weight:900;margin-top:3px}.future-tag{display:inline-block;color:#5f6d82;font-size:10px;font-weight:800;margin-top:3px}.table-note{color:var(--muted);font-size:12px;margin:8px 2px 0}.answer-yes{color:var(--green)}.answer-no{color:var(--amber)}
+    .dashboard-section{margin-top:20px;overflow:hidden}.dashboard-header{padding:16px 18px;border-bottom:1px solid var(--line)}.dashboard-header h2{margin:0;font-size:16px;font-weight:500}.dashboard-header p{margin:2px 0 0;color:var(--muted);font-size:12px}.section-content{padding:16px}.section-content .section-head{margin-top:0}
+    .info-button{position:relative;width:26px;height:26px;border:1px solid #7aa9c7;border-radius:50%;background:#eef8fd;color:#17607d;font-weight:900;cursor:pointer}.info-popover{display:none;position:absolute;z-index:20;right:0;top:32px;width:310px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--nav);color:#fff;text-align:left;font-size:12px;font-weight:500;line-height:1.5;box-shadow:var(--shadow);text-transform:none;letter-spacing:0;white-space:normal}.info-button:hover .info-popover,.info-button:focus .info-popover,.info-button:focus-within .info-popover{display:block}.waiting{color:var(--muted);font-size:11px}
+    .ml-chart-panel{margin-top:12px}.ml-chart-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.ml-chart-head b{font-size:13px}.ml-chart-head span{color:var(--muted);font-size:10px}.metric-tabs{display:flex;gap:5px;flex-wrap:wrap;margin:9px 0 6px}.metric-tab{border:1px solid #cfd9e7;background:#fff;border-radius:999px;padding:5px 8px;cursor:pointer;color:#526078;font-size:10px;font-weight:700}.metric-tab.active{background:var(--nav2);color:#fff;border-color:var(--nav2)}.bar-chart{height:210px;display:flex;align-items:stretch;gap:5px;border-bottom:1px solid #bfcadb;padding:12px 3px 0}.bar-group{flex:1;display:flex;flex-direction:column;justify-content:flex-end;min-width:27px}.bar-values{font-size:9px;color:var(--muted);text-align:center;white-space:nowrap}.bars{height:148px;display:flex;align-items:end;justify-content:center;gap:3px}.bar{width:min(20px,40%);min-height:2px;border-radius:4px 4px 0 0}.bar.forecast{background:var(--blue)}.bar.actual{background:#60c7b0}.bar-date{text-align:center;font-size:9px;color:var(--muted);padding-top:5px}.legend{display:flex;gap:14px;color:var(--muted);font-size:11px;margin-top:7px}.swatch{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}.swatch.forecast{background:var(--blue)}.swatch.actual{background:#60c7b0}
+    .bar-values{display:flex;justify-content:center;gap:4px}.bar-reading{width:min(42px,48%);text-align:center}.bar-reading b,.bar-reading small{display:block}.bar-reading b{color:var(--ink);font-size:11px;line-height:1.15}.bar-reading small{color:var(--muted);font-size:8px;line-height:1.15;margin-top:1px}
+    .comparison-disclosure{background:var(--panel)}.comparison-disclosure>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;cursor:pointer;list-style:none}.comparison-disclosure>summary::-webkit-details-marker{display:none}.comparison-disclosure>summary:after{content:"Show";padding:5px 10px;border:1px solid var(--line);border-radius:999px;color:var(--blue);font-size:11px}.comparison-disclosure[open]>summary:after{content:"Hide"}.comparison-summary b,.comparison-summary small{display:block}.comparison-summary b{font-size:14px}.comparison-summary small{color:var(--muted);font-size:11px;margin-top:2px}.comparison-disclosure[open]>summary{border-bottom:1px solid var(--line)}.compact-compare{min-width:820px}.metric-heading{display:flex;align-items:center;gap:6px}.metric-heading span:first-child{font-size:17px}.comparison-pair{display:grid;grid-template-columns:1fr 1fr;gap:7px;min-width:132px}.compare-reading{padding:7px 8px;border-radius:9px;background:var(--soft);text-align:center}.compare-reading.actual{background:var(--green-soft)}.compare-kind,.compare-pct,.compare-kwh,.compare-money{display:block}.compare-kind{color:var(--muted);font-size:9px;text-transform:uppercase}.compare-pct{color:var(--ink);font-size:15px;line-height:1.15;margin-top:2px}.compare-kwh{color:var(--muted);font-size:11px;line-height:1.2;margin-top:1px}.compare-money{font-size:15px;line-height:1.2;margin-top:7px}
+    .plan-table{min-width:960px}.plan-heading{display:flex;align-items:center;gap:6px}.plan-heading span:first-child{font-size:17px}.plan-value{display:block;min-width:92px}.plan-pct,.plan-kwh{display:block}.plan-pct{font-size:15px;line-height:1.15}.plan-kwh{color:var(--muted);font-size:11px;line-height:1.2;margin-top:1px}.plan-detail{display:block;color:var(--muted);font-size:10px;line-height:1.35;margin-top:5px}.plan-result{display:inline-block;margin-top:5px;padding:2px 6px;border-radius:999px;font-size:9px;text-transform:uppercase}.plan-result.yes{background:var(--green-soft);color:var(--green)}.plan-result.no{background:var(--amber-soft);color:var(--amber)}
+    .empty{padding:22px;color:var(--muted);text-align:center}.error{background:var(--red-soft);color:#9d2833;border:1px solid #edb5bb;border-radius:12px;padding:12px;margin-bottom:14px}.hidden{display:none!important}
+    /* Keep the page calm and readable: medium emphasis replaces heavy bold type. */
+    h2,h3,b,strong{font-weight:500}.topbar h1{font-weight:600}.answer{font-weight:400}.bridge-node b,.mini b{font-weight:500}.label,.cell-main,.cell-label,.active-tag,.future-tag,.status-pill,.button,.top-link{font-weight:500}th{font-weight:500}.info-button{font-weight:600}.grade{font-weight:500}
+    @media(max-width:980px){.hero-main,.two-col{grid-template-columns:1fr}.solar-summary{max-width:560px}.day-track{grid-template-columns:repeat(3,1fr);gap:15px 8px}.day-track:before{display:none}}
+    @media(max-width:620px){.topbar{padding:17px 14px 25px}.toprow{align-items:flex-start;flex-direction:column}.actions{justify-content:flex-start}.brand{align-items:flex-start}.topbar h1{font-size:23px}.subtitle{max-width:285px}.page{padding:0 9px 35px}.answer{font-size:17px}.quick-status{width:calc(100% - 12px);justify-content:flex-start}.solar-summary{grid-template-columns:92px minmax(0,1fr)}.solar-sun{left:32px}.solar-cloud{left:7px}.bridge-summary{grid-template-columns:1fr}.section-head{align-items:flex-start;flex-direction:column}.hero,.panel{padding:14px}.bridge{grid-template-columns:1fr;gap:5px}.bridge-label{min-height:0}.bridge-change span{transform:rotate(90deg);margin:0}.ml-performance{grid-template-columns:100px minmax(0,1fr)}.win-ring{width:84px;height:84px}.win-ring>span{width:64px;height:64px}.day-visual{padding:13px 10px}.day-visual-head{align-items:flex-start;flex-direction:column}.day-track{grid-template-columns:repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="toprow">
+      <div class="brand"><div class="mark">⚡</div><div><h1>My Battery Plan</h1><p class="subtitle">What the system will do, why it makes sense, and how well it is learning.</p></div></div>
+      <div class="actions"><span class="status-pill" id="controlPill">Loading…</span><button class="button" id="refreshButton" type="button">Refresh</button></div>
+    </div>
+  </header>
 
-      <p id="message" role="status"></p>
-
-      <section aria-labelledby="current-heading">
-        <div class="section-heading">
-          <div><p class="eyebrow">RIGHT NOW</p><h2 id="current-heading">Current energy status</h2></div>
-        </div>
-        <div class="cards" id="current"></div>
-      </section>
-
-      <section class="panel decision-panel" aria-labelledby="decision-heading">
-        <div class="section-heading">
-          <div><p class="eyebrow">TODAY</p><h2 id="decision-heading">Forecast and decision</h2></div>
-          <span class="status-pill">Shadow analysis only</span>
-        </div>
-        <div id="decision">Loading…</div>
-      </section>
-
-      <section class="summary-grid" id="economics" aria-label="Seven-day economics"></section>
-
-      <section class="panel plan-panel" aria-labelledby="plan-heading">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">JOINT ECONOMIC OPTIMISER</p>
-            <h2 id="plan-heading">7-day battery, import &amp; export plan</h2>
-            <p class="subtext">The existing rule plan compared with the improved cheap-charge and premium-export shadow plan.</p>
+  <main class="page">
+    <div id="pageError" class="error hidden"></div>
+    <section class="hero" aria-labelledby="todayHeading">
+      <div class="hero-main">
+        <div><h2 id="todayHeading">Current recommendation for today</h2><p class="answer" id="todayAnswer">Loading today’s battery plan…</p></div>
+        <aside class="solar-summary" aria-label="Today’s solar outlook">
+          <div class="solar-art" aria-hidden="true"><span class="solar-sun">☀</span><span class="solar-cloud">☁</span></div>
+          <div class="solar-copy">
+            <span class="solar-date" id="solarDateValue">Today</span>
+            <b class="solar-total" id="solarForecastValue">—</b><span class="solar-unit">forecast</span><span class="solar-rating" id="solarConfidenceValue">Loading</span>
+            <dl class="solar-facts">
+              <div><dt>Actual so far</dt><dd id="solarActualValue">—</dd></div>
+              <div><dt>Still forecast</dt><dd id="solarRemainingValue">—</dd></div>
+              <div><dt>Expected improvement</dt><dd id="expectedGain">—</dd></div>
+            </dl>
           </div>
-          <span class="status-pill rule-pill">Rule-based automation remains live</span>
+        </aside>
+      </div>
+      <div class="day-visual" aria-labelledby="dayJourneyHeading">
+        <div class="day-visual-head"><b id="dayJourneyHeading">Today’s energy journey</b><small>Sun, battery and automatic control across the day</small></div>
+        <div class="day-track" id="dayActivity" aria-live="polite">
+          <div class="day-moment dawn"><span class="day-orb" aria-hidden="true">🌅</span><span class="day-time">Morning</span><b>Solar starts</b><small>Waiting for solar data</small></div>
+          <div class="day-moment import"><span class="day-orb" aria-hidden="true">⚡</span><span class="day-time">10:05 AM</span><b>Cheap import</b><small>Waiting for plan</small></div>
+          <div class="day-moment solar"><span class="day-orb" aria-hidden="true">☀</span><span class="day-time">1:55 PM</span><b>Solar + charge</b><small>Waiting for plan</small></div>
+          <div class="day-moment export"><span class="day-orb" aria-hidden="true">↗</span><span class="day-time">5:05 PM</span><b>Premium export</b><small>Waiting for plan</small></div>
+          <div class="day-moment sunset"><span class="day-orb" aria-hidden="true">🌇</span><span class="day-time">8:55 PM</span><b>Self-use</b><small>Waiting for plan</small></div>
+          <div class="day-moment night"><span class="day-orb" aria-hidden="true">☾</span><span class="day-time">Midnight</span><b>Overnight reserve</b><small>Waiting for plan</small></div>
         </div>
-        <div class="scroll plan-scroll">
-          <table class="plan-table">
-            <colgroup>
-              <col class="date-col" />
-              <col span="2" class="forecast-col" />
-              <col span="2" class="rule-col" />
-              <col span="11" class="shadow-col" />
-              <col span="3" class="comparison-col" />
-              <col class="info-col" />
-            </colgroup>
+      </div>
+    </section>
+
+    <div class="quick-status" aria-label="System status">
+      <span class="chip" id="planChip"><i class="dot"></i><span>Loading today’s plan</span></span>
+      <span class="chip" id="batteryChip"><i class="dot"></i><span>Waiting for battery</span></span>
+      <span class="chip" id="nextChip"><i class="dot"></i><span>Checking next action</span></span>
+      <span class="chip" id="changeChip"><i class="dot"></i><span>Checking for plan changes</span></span>
+    </div>
+
+    <section class="dashboard-section" id="whyDetails">
+      <div class="section-content"><div class="two-col">
+        <article class="panel">
+          <h3>Battery energy bridge</h3>
+          <div class="bridge" id="batteryBridge" aria-label="Battery energy journey">
+            <div class="bridge-node"><span class="bridge-orb" aria-hidden="true">🔋</span><span class="bridge-label" id="bridgeStartLabel">Battery when calculated</span><b id="bridgeStart">—</b><span class="bridge-source actual">Actual</span></div>
+            <div class="bridge-change solar"><b id="bridgeSolarDelta">—</b><small>Solar</small><span>→</span></div>
+            <div class="bridge-node"><span class="bridge-orb" aria-hidden="true">☀</span><span class="bridge-label">Solar alone by 5 PM</span><b id="bridgeSolar">—</b><span class="bridge-source">Forecast</span></div>
+            <div class="bridge-change buy"><b id="bridgeImportDelta">—</b><small>Cheap import</small><span>→</span></div>
+            <div class="bridge-node full"><span class="bridge-orb" aria-hidden="true">⚡</span><span class="bridge-label">Before export</span><b id="bridgeFive">—</b><span class="bridge-source">Forecast</span></div>
+            <div class="bridge-change sell"><b id="bridgeSaleDelta">—</b><small>Premium sale</small><span>→</span></div>
+            <div class="bridge-node"><span class="bridge-orb" aria-hidden="true">↗</span><span class="bridge-label">After sale</span><b id="bridgeAfterSale">—</b><span class="bridge-source">Forecast</span></div>
+            <div class="bridge-change home"><b id="bridgeHomeDelta">—</b><small>Home use</small><span>→</span></div>
+            <div class="bridge-node night"><span class="bridge-orb" aria-hidden="true">☾</span><span class="bridge-label">Expected midnight</span><b id="bridgeEnd">—</b><span class="bridge-source">Forecast</span></div>
+          </div>
+          <div class="bridge-summary">
+            <div class="bridge-fact"><span aria-hidden="true">🛡</span><span><b id="bridgeReserve">— protected</b><small>Reserve for the home</small></span></div>
+            <div class="bridge-fact"><span aria-hidden="true">⌂</span><span><b id="bridgeHomeUse">— home use</b><small id="bridgeRecharge">Until useful solar returns</small></span></div>
+            <div class="bridge-fact"><span aria-hidden="true">$</span><span><b id="bridgeRevenue">— revenue</b><small>Expected premium export income</small></span></div>
+          </div>
+          <div class="reason-list" id="reasonList"><div class="reason"><span class="check">✓</span><span>Waiting for today’s energy calculation.</span></div></div>
+        </article>
+        <article class="panel">
+          <h3>How much should I trust it?</h3>
+          <div class="trust-head"><div class="grade warn" id="trustGrade">LOADING</div><div class="trust-copy"><b id="trustTitle">Checking recent results</b><span id="trustText">Comparing forecasts with what actually happened.</span></div></div>
+          <div class="ml-performance" aria-label="ML forecast performance">
+            <div class="win-visual"><div class="win-ring unavailable" id="mlWinRing" role="img" aria-label="ML win rate unavailable"><span><b id="mlWins">—</b><small>days</small></span></div><span class="win-caption" id="winRateLabel">ML versus simple forecast</span></div>
+            <div class="error-visual" role="img" id="errorVisual" aria-label="Average forecast errors unavailable">
+              <div class="error-row"><div class="error-label"><span>Home-use error</span><b id="loadError">—</b></div><div class="error-track"><i id="loadErrorBar" style="width:0"></i></div></div>
+              <div class="error-row solar"><div class="error-label"><span>Solar error</span><b id="solarError">—</b></div><div class="error-track"><i id="solarErrorBar" style="width:0"></i></div></div>
+              <small class="error-note">Average absolute error on the same scale · lower is better</small>
+            </div>
+          </div>
+        </article>
+      </div>
+      <article class="panel ml-chart-panel">
+        <div class="ml-chart-head"><b>Forecast versus actual</b><span id="chartMetricLabel">Home use · kWh</span></div>
+        <div class="metric-tabs" id="metricTabs"></div>
+        <div class="bar-chart" id="performanceChart" aria-label="Forecast versus actual chart"><div class="empty">Loading forecast comparisons…</div></div>
+        <div class="legend"><span><i class="swatch forecast"></i>Forecast</span><span><i class="swatch actual"></i>Actual</span></div>
+      </article>
+      </div>
+    </section>
+
+    <section class="dashboard-section" id="weekDetails">
+      <details class="comparison-disclosure" id="weekPlanDisclosure">
+        <summary><span class="comparison-summary"><b id="weekHeading">Seven-day plan</b><small id="weekDescription">Today remains a prediction until the final export plan is frozen at 4:45 PM and checked against live SOC at 4:55 PM.</small></span></summary>
+        <div class="section-content">
+          <div class="table-panel"><div class="table-wrap"><table class="plan-table" aria-label="Seven-day battery plan">
             <thead>
-              <tr class="group-row">
-                <th rowspan="2">Date</th>
-                <th colspan="2" class="group-forecast">Forecast</th>
-                <th colspan="2" class="group-rule">Existing rule plan</th>
-                <th colspan="11" class="group-shadow">Improved shadow plan</th>
-                <th colspan="3" class="group-comparison">Value comparison</th>
-                <th rowspan="2" class="info-heading"><span aria-hidden="true">ⓘ</span><span class="sr-only">Decision information</span></th>
-              </tr>
-              <tr class="column-row">
-                <th class="head-forecast">Solar forecast<br><small>gross / protected</small></th>
-                <th class="head-forecast">Rating<br><small>solar / confidence</small></th>
-                <th class="head-rule">Export<br><small>kWh / battery % · 5–9 PM</small></th>
-                <th class="head-rule">Revenue<br><small>current rule</small></th>
-                <th class="head-shadow">Cheap import<br><small>kWh / battery % · bought / stored</small></th>
-                <th class="head-shadow">Import cost</th>
-                <th class="head-shadow">Premium export<br><small>kWh / battery % · 5–9 PM</small></th>
-                <th class="head-shadow">Starting battery<br><small>when plan is calculated</small></th>
-                <th class="head-shadow">Solar-only battery<br><small>at 5 PM · no grid charge</small></th>
-                <th class="head-shadow">Battery at 5 PM<br><small>after cheap import</small></th>
-                <th class="head-shadow">Overnight reserve<br><small>needed after 9 PM</small></th>
-                <th class="head-shadow">Next recharge<br><small>solar or 10 AM</small></th>
-                <th class="head-shadow">Battery at midnight</th>
-                <th class="head-shadow">Expensive import<br><small>kWh / battery % · before 10 AM</small></th>
-                <th class="head-shadow">FoxESS minimum</th>
-                <th class="head-comparison">New revenue<br><small>premium export</small></th>
-                <th class="head-comparison">Revenue increase<br><small>new − current</small></th>
-                <th class="head-comparison">Net improvement<br><small>after cost &amp; wear</small></th>
-              </tr>
+              <tr><th>Day</th><th><span class="plan-heading"><span aria-hidden="true">☀</span><span>Solar outlook</span></span></th><th><span class="plan-heading"><span aria-hidden="true">⚡</span><span>Buy cheaply</span></span></th><th><span class="plan-heading"><span aria-hidden="true">🛡</span><span>Keep for home</span></span></th><th><span class="plan-heading"><span aria-hidden="true">↗</span><span>Sell at premium</span></span></th><th><span class="plan-heading"><span aria-hidden="true">☾</span><span>Expected midnight</span></span></th><th>Why?</th></tr>
             </thead>
-            <tbody id="plan"></tbody>
-          </table>
+            <tbody id="planBody"><tr><td colspan="7" class="empty">Loading the seven-day plan…</td></tr></tbody>
+          </table></div></div>
+          <p class="table-note">Percentages compare energy with the 42 kWh battery capacity. Solar is generation before household use; battery movement includes conversion losses.</p>
         </div>
-        <div class="legend">
-          <span><strong>Battery scale:</strong> 100% = 42.0 kWh; 1% = 0.42 kWh.</span>
-          <span><strong>Import/export percentage:</strong> AC energy divided by the 42 kWh battery capacity. It is an easy comparison scale, not the exact SOC change after conversion losses.</span>
-          <span><strong>No-grid comparison:</strong> today’s manual or automated grid charging is measured from FoxESS telemetry and removed before estimating the 5 PM battery.</span>
-          <span><strong>Solar-first rule:</strong> additional cheap charging can only close the remaining forecast gap to 100%; observed grid energy is not counted twice.</span>
-          <span><strong>Required after 9 PM:</strong> 10% FoxESS minimum plus predicted household demand until useful solar or the next 10 AM shoulder window.</span>
-          <span><strong>Old plan:</strong> the current rule-based seven-day forecast with no 10 AM–2 PM cheap charging.</span>
-          <span><strong>Revenue uplift:</strong> new premium export revenue minus the current rule plan’s premium export revenue.</span>
-          <span><strong>Fair economic gain:</strong> the optimiser’s like-for-like no-charge baseline comparison after import cost and configured battery-wear allowance. It is deliberately separate from gross revenue uplift.</span>
-          <span><strong>Control:</strong> this table is shadow analysis only. It cannot change FoxESS settings.</span>
-          <span id="assumptions"><strong>Planning assumptions:</strong> loading…</span>
-        </div>
-      </section>
+      </details>
+    </section>
 
-      <section class="panel" aria-labelledby="ml-heading">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">FORECAST CHECK</p>
-            <h2 id="ml-heading">ML performance monitor</h2>
-            <p class="subtext">Solar, home use, 5–9 PM export, imports and revenue — forecast compared with actual.</p>
-          </div>
+    <section class="dashboard-section" id="comparisonDetails">
+      <details class="comparison-disclosure">
+        <summary><span class="comparison-summary"><b>Forecast versus actual details</b><small>Solar, home use, premium export and revenue</small></span></summary>
+        <div class="section-content">
+          <div class="table-panel"><div class="table-wrap"><table class="compact-compare" aria-label="Forecast versus actual key results">
+            <thead><tr><th>Day</th><th><span class="metric-heading"><span aria-hidden="true">☀</span><span>Solar produced</span></span></th><th><span class="metric-heading"><span aria-hidden="true">⌂</span><span>Home use</span></span></th><th><span class="metric-heading"><span aria-hidden="true">↗</span><span>Premium export</span></span></th><th><span class="metric-heading"><span aria-hidden="true">$</span><span>Export revenue</span></span></th></tr></thead>
+            <tbody id="comparisonBody"><tr><td colspan="5" class="empty">Loading completed forecast comparisons…</td></tr></tbody>
+          </table></div></div>
+          <p class="table-note" id="comparisonNote">Blue is forecast; green is actual. Energy percentages compare kWh with the 42 kWh battery capacity.</p>
         </div>
-        <div id="ml-performance">Loading validation history…</div>
-      </section>
+      </details>
+    </section>
+  </main>
 
-      <footer>Read-only view. The joint optimiser cannot change FoxESS settings. Existing rule-based export automation is unchanged.</footer>
-    </main>
-  </body>
+  <script>
+    const $=id=>document.getElementById(id);
+    const BATTERY_KWH=42;
+    const esc=value=>String(value??"—").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+    const num=(value,digits=1)=>value==null||Number.isNaN(Number(value))?"—":Number(value).toFixed(digits);
+    const kwh=value=>value==null?"—":`${num(value)} kWh`;
+    const pct=value=>value==null?"—":`${num(value)}%`;
+    const energyPct=value=>value==null?"—":`${num(Number(value)/BATTERY_KWH*100)}%`;
+    const batteryPair=(kwhValue,socValue)=>{const energy=kwhValue==null&&socValue!=null?Number(socValue)/100*BATTERY_KWH:kwhValue;const level=socValue==null&&energy!=null?Number(energy)/BATTERY_KWH*100:socValue;return energy==null&&level==null?"—":`${kwh(energy)} · ${pct(level)}`;};
+    const bridgeValue=(kwhValue,socValue)=>{const energy=kwhValue==null&&socValue!=null?Number(socValue)/100*BATTERY_KWH:kwhValue;const level=socValue==null&&energy!=null?Number(energy)/BATTERY_KWH*100:socValue;const wholePct=level==null?"—":`${Math.round(Number(level))}%`,wholeKwh=energy==null?"—":`${Math.round(Number(energy))} kWh`;return `<span class="bridge-pct">${wholePct}</span><small class="bridge-kwh">${wholeKwh}</small>`;};
+    const bridgeDelta=value=>value==null?"—":`${Number(value)>=0?"+":"−"}${Math.round(Math.abs(Number(value)))}%`;
+    const energyPair=value=>value==null?"—":`${kwh(value)} · ${energyPct(value)}`;
+    const planEnergy=value=>value==null?'<span class="waiting">Unavailable</span>':`<span class="plan-value"><b class="plan-pct">${Math.round(Number(value)/BATTERY_KWH*100)}%</b><small class="plan-kwh">${num(value)} kWh</small></span>`;
+    const planBattery=(kwhValue,socValue)=>{const energy=kwhValue==null&&socValue!=null?Number(socValue)/100*BATTERY_KWH:kwhValue;const level=socValue==null&&energy!=null?Number(energy)/BATTERY_KWH*100:socValue;return energy==null&&level==null?'<span class="waiting">Unavailable</span>':`<span class="plan-value"><b class="plan-pct">${Math.round(Number(level))}%</b><small class="plan-kwh">${num(energy)} kWh</small></span>`;};
+    const wholePct=value=>value==null?"—":`${Math.round(Number(value))}%`;
+    const oneKwh=value=>value==null?"—":`${num(value)} kWh`;
+    const money=value=>value==null?"—":`${Number(value)<0?"−":""}$${Math.abs(Number(value)).toFixed(2)}`;
+    const localTime=value=>value?new Date(value).toLocaleString("en-AU",{weekday:"short",hour:"numeric",minute:"2-digit"}):"—";
+    const clockTime=value=>value?new Date(value).toLocaleTimeString("en-AU",{hour:"numeric",minute:"2-digit"}):"—";
+    const shortDate=value=>value?new Date(`${value}T12:00:00`).toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short"}):"—";
+    const nextRecharge=value=>value?localTime(value).replace(/^\w+,?\s*/,""):"forecast end";
+    const infoButton=text=>`<button class="info-button" type="button" aria-label="Decision explanation" title="${esc(text)}">i<span class="info-popover" role="tooltip">${esc(text)}</span></button>`;
+    const readOnlyUrl=url=>url.startsWith("/api/")?`/.netlify/functions/live-data?view=${encodeURIComponent(url.slice(5))}`:url;
+    const get=async(url,timeoutMs=15000)=>{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeoutMs);try{const response=await fetch(readOnlyUrl(url),{cache:"no-store",credentials:"same-origin",signal:controller.signal});const type=response.headers.get("content-type")||"";const data=type.includes("application/json")?await response.json():null;if(!response.ok)throw new Error(data?.error||`${url} returned HTTP ${response.status}`);if(data==null)throw new Error(`${url} did not return JSON`);return data;}catch(error){if(error.name==="AbortError")throw new Error(`${url} timed out after ${Math.round(timeoutMs/1000)} seconds`);throw error;}finally{clearTimeout(timer);}};
+
+    let refreshGeneration=0;
+    let activeMetric="home_use";
+    const metricConfig={solar:{label:"Solar",forecast:"solar_forecast_kwh",actual:"solar_actual_kwh",unit:"kWh"},home_use:{label:"Home use",forecast:"load_forecast_kwh",actual:"load_actual_kwh",unit:"kWh"},premium_export:{label:"5–9 PM export",forecast:"premium_export_forecast_kwh",actual:"premium_export_actual_kwh",unit:"kWh"},grid_import:{label:"Grid import",forecast:"grid_import_forecast_kwh",actual:"grid_import_actual_kwh",unit:"kWh"},premium_revenue:{label:"5–9 PM revenue",forecast:"export_revenue_forecast",actual:"premium_revenue_actual",unit:"$"}};
+
+    function nextAction(){const now=new Date();const minutes=now.getHours()*60+now.getMinutes();const items=[[9*60+55,"Charge schedule at 9:55 AM"],[10*60+5,"Cheap charging at 10:05 AM"],[16*60+55,"Export schedule at 4:55 PM"],[17*60+5,"Premium export at 5:05 PM"],[21*60,"Cleanup at 9:00 PM"]];const next=items.find(([time])=>time>minutes);return next?next[1]:"Tomorrow’s plan at 9:45 AM";}
+
+    const chargeOf=day=>Number(day?.charge_kwh??day?.actual_simulated_charge_kwh??day?.recommended_charge_kwh??0);
+    const exportOf=day=>Number(day?.export_kwh??day?.simulated_premium_export_kwh??day?.recommended_export_kwh??0);
+    const solarTotalOf=day=>day?.full_day_solar_kwh??day?.solar_kwh;
+    const storedImportOf=day=>day?.stored_from_grid_kwh??(chargeOf(day)>0?chargeOf(day)*.95:0);
+    const importCostOf=day=>day?.import_cost??chargeOf(day)*.1111;
+    const exportRevenueOf=day=>day?.export_revenue??exportOf(day)*.28;
+    const solarOnlyKwhOf=day=>day?.solar_only_5pm_kwh??(day?.solar_only_5pm_soc!=null?Number(day.solar_only_5pm_soc)/100*BATTERY_KWH:null);
+    const startKwhOf=day=>day?.battery_start_kwh??(day?.starting_soc!=null?Number(day.starting_soc)/100*BATTERY_KWH:null);
+    const atFiveKwhOf=day=>day?.battery_5pm_kwh??(day?.expected_5pm_soc!=null?Number(day.expected_5pm_soc)/100*BATTERY_KWH:null);
+    const endKwhOf=day=>day?.battery_end_kwh??(day?.expected_end_soc!=null?Number(day.expected_end_soc)/100*BATTERY_KWH:null);
+
+    function decisionExplanation(day){
+      const total=solarTotalOf(day),solarOnlySoc=day.solar_only_5pm_soc,solarOnlyKwh=solarOnlyKwhOf(day),charge=chargeOf(day),stored=storedImportOf(day),sale=exportOf(day),reserve=day.required_reserve_kwh,draw=day.forecast_draw_to_recharge_kwh,minKwh=day.foxess_min_kwh??4.2,recharge=nextRecharge(day.next_recharge_timestamp),parts=[];
+      parts.push(`Solar forecast is ${kwh(total)}. Solar alone is expected to leave the battery at ${batteryPair(solarOnlyKwh,solarOnlySoc)} by 5 PM, so it ${Number(solarOnlySoc)>=99.5?"can":"cannot"} fill the battery.`);
+      if(charge>.05)parts.push(`Buy ${energyPair(charge)} for about ${money(importCostOf(day))}; about ${energyPair(stored)} is expected to remain after charging losses.`);else parts.push("No cheap grid charging is planned.");
+      if(reserve!=null){let reserveText=`Keep ${energyPair(reserve)} for the home`;if(draw!=null)reserveText+=`, including ${energyPair(draw)} predicted use until ${recharge}`;reserveText+=` and the FoxESS minimum of ${energyPair(minKwh)}.`;parts.push(reserveText);}
+      if(sale>.05)parts.push(`Sell ${energyPair(sale)} for about ${money(exportRevenueOf(day))}, stopping at ${pct(day.export_cutoff_soc)} battery.`);else parts.push("No premium export is planned because there is no safe surplus.");
+      return parts.join(" ");
+    }
+
+    function answerText(day){const charge=chargeOf(day),sale=exportOf(day);if(charge>=.05&&sale>=.05)return`Buy <strong>${kwh(charge)}</strong> when electricity is cheap, then sell <strong>${kwh(sale)}</strong> at the premium rate.`;if(charge>=.05)return`Buy <strong>${kwh(charge)}</strong> when electricity is cheap and keep the energy for the home.`;if(sale>=.05)return`Buy no grid energy. Sell <strong>${kwh(sale)}</strong> of safe surplus at the premium rate.`;return`No forced buying or selling today. Keep the battery in normal Self-use mode.`;}
+
+    function renderDayTimeline(day,telemetry={},events=[]){
+      const batteryState=value=>value==null?"Battery —":`Battery ${Math.round(Number(value))}% · ${Math.round(Number(value)/100*BATTERY_KWH)} kWh`;
+      const wholeEnergy=value=>value==null?"":`${Math.round(Number(value))} kWh`;
+      const milestones=telemetry?.day_milestones||{},chargeEvent=(events||[]).find(event=>event.plan_date===day.date&&event.phase==="charge"&&String(event.status).toLowerCase()==="verified"),charge=Number(chargeEvent?.charge_kwh??chargeOf(day)),sale=exportOf(day),start=milestones["10:05"]?.battery_soc??day.starting_soc??day.battery_start_soc,afterCharge=milestones["13:55"]?.battery_soc??day.charge_target_soc??day.expected_5pm_soc??day.soc_5pm,atFive=milestones["17:05"]?.battery_soc??day.expected_5pm_soc??day.soc_5pm,afterExport=milestones["20:55"]?.battery_soc??day.expected_post_export_soc??day.export_cutoff_soc,end=day.expected_end_soc??day.end_soc;
+      const solarSoc=telemetry?.solar_start_soc??start,solarTime=telemetry?.solar_start_timestamp?clockTime(telemetry.solar_start_timestamp):"Morning";
+      const moments=[
+        ["dawn","🌅",solarTime,"Solar starts",batteryState(solarSoc),telemetry?.solar_start_soc!=null?"Actual":"Forecast",""],
+        ["import","⚡","10:05 AM",charge>.05?"Cheap import":"No grid import",batteryState(start),milestones["10:05"]?"Actual":"Forecast",charge>.05?`Buy ${wholeEnergy(charge)}`:""],
+        ["solar","☀","1:55 PM","Solar + charge",batteryState(afterCharge),milestones["13:55"]?"Actual":"Forecast",""],
+        ["export","↗","5:05 PM",sale>.05?"Premium export":"Keep energy",batteryState(atFive),milestones["17:05"]?"Actual":"Forecast",sale>.05?`Sell ${wholeEnergy(sale)}`:""],
+        ["sunset","🌇","8:55 PM","Self-use resumes",batteryState(afterExport),milestones["20:55"]?"Actual":"Forecast",""],
+        ["night","☾","Midnight","Overnight reserve",batteryState(end),"Forecast",""],
+      ];
+      $("dayActivity").innerHTML=moments.map(([tone,icon,time,title,detail,source,action])=>`<div class="day-moment ${tone}" role="listitem"><span class="day-orb" aria-hidden="true">${icon}</span><span class="day-time">${esc(time)}</span><b>${esc(title)}</b><span class="day-source ${source.toLowerCase()}">${esc(source)}</span><small>${esc(detail)}</small><small class="day-action">${esc(action)}</small></div>`).join("");
+      $("dayActivity").setAttribute("role","list");
+    }
+
+    function renderDecision(day,{finalPlan=false,calculatedAt=null}={}){
+      const charge=chargeOf(day),sale=exportOf(day),start=day.starting_soc??day.battery_start_soc,solarOnly=day.solar_only_5pm_soc,atFive=day.expected_5pm_soc??day.soc_5pm,afterSale=day.expected_post_export_soc??day.export_cutoff_soc,end=day.expected_end_soc??day.end_soc;
+      $("todayHeading").textContent=finalPlan?"Final control plan for today":"Current ML and optimiser prediction";
+      $("todayAnswer").innerHTML=answerText(day);
+      $("expectedGain").textContent=money(day.daily_improvement??(Number(day.net_value||0)-Number(day.baseline_value||0)));
+      $("solarDateValue").textContent=day.date?shortDate(day.date):"Today";
+      $("solarForecastValue").textContent=kwh(solarTotalOf(day));
+      $("solarActualValue").textContent=day.actual_solar_so_far_kwh==null?"Not available":kwh(day.actual_solar_so_far_kwh);
+      $("solarRemainingValue").textContent=day.remaining_solar_kwh==null?"Not available":kwh(day.remaining_solar_kwh);
+      $("solarConfidenceValue").textContent=day.confidence?`${day.confidence} confidence`:"Protected forecast";
+      $("bridgeStartLabel").textContent=calculatedAt?`Battery at ${clockTime(calculatedAt)}`:"Battery at latest calculation";
+      $("bridgeStart").innerHTML=bridgeValue(startKwhOf(day),start);$("bridgeSolar").innerHTML=bridgeValue(solarOnlyKwhOf(day),solarOnly);$("bridgeFive").innerHTML=bridgeValue(atFiveKwhOf(day),atFive);$("bridgeAfterSale").innerHTML=bridgeValue(null,afterSale);$("bridgeEnd").innerHTML=bridgeValue(endKwhOf(day),end);
+      $("bridgeSolarDelta").textContent=bridgeDelta(solarOnly==null||start==null?null:Number(solarOnly)-Number(start));$("bridgeImportDelta").textContent=bridgeDelta(atFive==null||solarOnly==null?null:Number(atFive)-Number(solarOnly));$("bridgeSaleDelta").textContent=bridgeDelta(afterSale==null||atFive==null?null:Number(afterSale)-Number(atFive));$("bridgeHomeDelta").textContent=bridgeDelta(afterSale==null||end==null?null:Number(end)-Number(afterSale));
+      $("bridgeReserve").textContent=`${energyPair(day.required_reserve_kwh)} protected`;$("bridgeHomeUse").textContent=`${energyPair(day.forecast_draw_to_recharge_kwh)} home use`;$("bridgeRecharge").textContent=day.next_recharge_timestamp?`Until ${nextRecharge(day.next_recharge_timestamp)}`:"Until useful solar returns";$("bridgeRevenue").textContent=`${kwh(sale)} sold · ${money(exportRevenueOf(day))}`;
+      const explanation=decisionExplanation(day);$("reasonList").innerHTML=`<div class="reason"><span class="check">✓</span><span>${esc(explanation)}</span></div>`;
+    }
+
+    function renderAudit(audit){
+      const frozenDays=audit.frozen?.days||[];const today=frozenDays.find(day=>day.date===audit.today);const switches=audit.control?.switches||{};const enabled=audit.control?.mode==="joint"&&switches.master_enabled&&switches.charge_enabled&&switches.export_enabled;
+      $("controlPill").textContent=enabled?"Automatic control is on":"Automatic control needs attention";$("controlPill").className=`status-pill ${enabled?"good":"bad"}`;
+      const finalPlan=Boolean(audit.frozen?.is_final_export_plan);$("planChip").querySelector("span").textContent=audit.frozen?(finalPlan?`Final control plan frozen ${localTime(audit.frozen.created_at)}`:`Saved calculation ${localTime(audit.frozen.created_at)} · final export plan at 4:45 PM`):"No saved calculation";$("planChip").className=`chip ${audit.frozen?"":"bad"}`;
+      $("batteryChip").querySelector("span").textContent=audit.live?.battery_soc==null?"Battery reading unavailable":`Battery now ${pct(audit.live.battery_soc)}`;$("batteryChip").className=`chip ${audit.live?.battery_soc==null?"warn":""}`;
+      $("nextChip").querySelector("span").textContent=nextAction();
+      if(!today){$("todayAnswer").textContent="No confirmed plan is available yet.";$("planBody").innerHTML='<tr><td colspan="7" class="empty">No confirmed plan is available.</td></tr>';return;}
+      renderDecision(today,{finalPlan,calculatedAt:audit.frozen.created_at});
+      renderDayTimeline(today,audit.live||{},audit.events||[]);
+      /* The initial saved calculation is replaced by the live prediction below before 4:45 PM. */
+      renderPlanTable(frozenDays,[],audit.today,{finalPlan});
+    }
+
+    function renderPreview(audit,preview){
+      const frozenDays=audit.frozen?.days||[];const today=frozenDays.find(day=>day.date===audit.today);const liveDays=preview?.days||[];const live=liveDays.find(day=>day.date===audit.today);const finalPlan=Boolean(audit.frozen?.is_final_export_plan);renderPlanTable(frozenDays,liveDays,audit.today,{finalPlan});
+      if(!today||!live){$("changeChip").querySelector("span").textContent="Latest forecast still loading";$("changeChip").className="chip warn";return;}
+      renderDayTimeline(finalPlan?today:live,audit.live||{},audit.events||[]);
+      if(!finalPlan){renderDecision(live,{finalPlan:false});$("planChip").querySelector("span").textContent="Current ML prediction shown · final export plan at 4:45 PM";$("weekDescription").textContent="Today shows the latest ML and optimiser prediction. The final export plan freezes at 4:45 PM and live SOC is checked at 4:55 PM.";}else{$("weekDescription").textContent="Today shows the final frozen control plan. Future days remain forecasts and will update before use.";}
+      const liveCharge=Number(live.actual_simulated_charge_kwh??live.recommended_charge_kwh??0),liveExport=Number(live.simulated_premium_export_kwh??live.recommended_export_kwh??0),dc=liveCharge-Number(today.charge_kwh||0),de=liveExport-Number(today.export_kwh||0),stable=Math.abs(dc)<.5&&Math.abs(de)<.5;
+      $("changeChip").querySelector("span").textContent=stable?"No meaningful change since confirmation":"Latest forecast has changed";$("changeChip").className=`chip ${stable?"":"warn"}`;
+    }
+
+    function renderPlanTable(frozenDays,liveDays,todayDate,{finalPlan=false}={}){
+      const frozenByDate=new Map(frozenDays.map(day=>[day.date,day]));const liveByDate=new Map(liveDays.map(day=>[day.date,day]));const dates=[...new Set([...frozenDays.map(day=>day.date),...liveDays.map(day=>day.date)])].sort();if(!dates.length){$("planBody").innerHTML='<tr><td colspan="7" class="empty">The seven-day plan is not available yet.</td></tr>';return;}
+      $("planBody").innerHTML=dates.map(date=>{
+        const active=date===todayDate,hasLive=liveByDate.has(date),useLive=active&&hasLive&&!finalPlan;
+        const source=active?(useLive?liveByDate.get(date):(frozenByDate.get(date)||liveByDate.get(date))):(liveByDate.get(date)||frozenByDate.get(date));if(!source)return"";
+        const solar=solarTotalOf(source),actualSolar=source.actual_solar_so_far_kwh,remainingSolar=source.remaining_solar_kwh,solarOnlySoc=source.solar_only_5pm_soc,solarOnlyKwh=solarOnlyKwhOf(source),fills=Number(solarOnlySoc)>=99.5,charge=chargeOf(source),stored=storedImportOf(source),sale=exportOf(source),end=source.expected_end_soc??source.end_soc,atFive=source.expected_5pm_soc??source.soc_5pm,reserve=source.required_reserve_kwh,draw=source.forecast_draw_to_recharge_kwh,forecastLabel=hasLive?(source.confidence?`${source.confidence} forecast`:"Latest forecast"):"Saved snapshot",activeLabel=finalPlan?"FINAL CONTROL PLAN":useLive?"LATEST PREDICTION":"SAVED CALCULATION";
+        const recharge=source.next_recharge_timestamp?`until ${nextRecharge(source.next_recharge_timestamp)}`:"until the next useful solar";
+        return`<tr class="${active?"today-row":""}">
+          <td><span class="cell-main">${active?"Today":esc(shortDate(date))}</span><span class="${active?"active-tag":"future-tag"}">${active?activeLabel:esc(forecastLabel.toUpperCase())}</span><span class="plan-detail">Starts at ${wholePct(source.starting_soc??source.battery_start_soc)} · ${oneKwh(startKwhOf(source))}</span></td>
+          <td>${planEnergy(solar)}<span class="plan-result ${fills?"yes":"no"}">${fills?"Fills battery":"Needs support"}</span><span class="plan-detail">Solar alone by 5 PM: ${wholePct(solarOnlySoc)} · ${oneKwh(solarOnlyKwh)}${active&&actualSolar!=null?`<br>Actual ${oneKwh(actualSolar)} + remaining ${oneKwh(remainingSolar)}`:""}</span></td>
+          <td>${planEnergy(charge)}<span class="plan-detail">${charge>.05?`${money(importCostOf(source))} cost · ${oneKwh(stored)} stored`:"No grid charging"}<br>Battery at 5 PM: ${wholePct(atFive)} · ${oneKwh(atFiveKwhOf(source))}</span></td>
+          <td>${planEnergy(reserve)}<span class="plan-detail">Home use ${draw==null?"—":`${Math.round(Number(draw)/BATTERY_KWH*100)}%`} · ${oneKwh(draw)} ${esc(recharge)}<br>Includes 10% FoxESS minimum</span></td>
+          <td>${planEnergy(sale)}<span class="plan-detail">${money(exportRevenueOf(source))} income<br>Stops at ${wholePct(source.export_cutoff_soc)}</span></td>
+          <td>${planBattery(endKwhOf(source),end)}<span class="plan-detail">Expected after evening use</span></td>
+          <td>${infoButton(decisionExplanation(source))}</td>
+        </tr>`;
+      }).join("");
+    }
+
+    function comparisonEnergyCell(forecast,actual){
+      const reading=(value,kind)=>value==null?`<div class="compare-reading ${kind}"><span class="compare-kind">${kind}</span><span class="waiting">Unavailable</span></div>`:`<div class="compare-reading ${kind}"><span class="compare-kind">${kind}</span><b class="compare-pct">${Math.round(Number(value)/BATTERY_KWH*100)}%</b><small class="compare-kwh">${num(value)} kWh</small></div>`;
+      return `<div class="comparison-pair">${reading(forecast,"forecast")}${reading(actual,"actual")}</div>`;
+    }
+
+    function comparisonMoneyCell(forecast,actual){
+      const reading=(value,kind)=>`<div class="compare-reading ${kind}"><span class="compare-kind">${kind}</span><b class="compare-money">${value==null?"—":money(value)}</b></div>`;
+      return `<div class="comparison-pair">${reading(forecast,"forecast")}${reading(actual,"actual")}</div>`;
+    }
+
+    function renderComparison(rows){
+      const target=$("comparisonBody"),usable=(rows||[]).slice(-7).reverse();
+      if(!usable.length){target.innerHTML='<tr><td colspan="5" class="empty">No completed forecast-versus-actual days are available yet.</td></tr>';return;}
+      target.innerHTML=usable.map(row=>`<tr>
+        <td><span class="cell-main">${esc(shortDate(row.date))}</span><span class="future-tag">COMPLETED DAY</span></td>
+        <td>${comparisonEnergyCell(row.solar_forecast_kwh,row.solar_actual_kwh)}</td>
+        <td>${comparisonEnergyCell(row.load_forecast_kwh,row.load_actual_kwh)}</td>
+        <td>${comparisonEnergyCell(row.premium_export_forecast_kwh,row.premium_export_actual_kwh)}</td>
+        <td>${comparisonMoneyCell(row.export_revenue_forecast,row.premium_revenue_actual)}</td>
+      </tr>`).join("");
+    }
+
+    function renderPerformance(performance){
+      if(!performance?.available){renderComparison([]);$("trustGrade").textContent="LEARNING";$("trustGrade").className="grade warn";$("trustTitle").textContent="Not enough completed days yet";$("trustText").textContent=performance?.reason||"Waiting for forecast-versus-actual results.";$("loadError").textContent="—";$("solarError").textContent="—";$("mlWins").textContent="—";$("winRateLabel").textContent="ML versus simple forecast";$("mlWinRing").className="win-ring unavailable";$("mlWinRing").style.setProperty("--win",0);$("mlWinRing").setAttribute("aria-label","ML win rate unavailable");$("loadErrorBar").style.width="0";$("solarErrorBar").style.width="0";$("errorVisual").setAttribute("aria-label","Average forecast errors unavailable");$("metricTabs").innerHTML="";$("performanceChart").innerHTML='<div class="empty">Forecast comparisons are not available yet.</div>';return;}
+      const days=Number(performance.validated_days||0),wins=Number(performance.ml_wins||0),winRate=days?wins/days*100:null,under=Number(performance.ml_underprediction_days||0),cautious=days<7||under>days/2;$("trustGrade").textContent=days<7?"STILL\nLEARNING":days<30?"EARLY\nGOOD":"ESTABLISHED";$("trustGrade").style.whiteSpace="pre-line";$("trustGrade").className=`grade ${cautious?"warn":""}`;$("trustTitle").textContent=days<7?"More history is needed":"Useful, but keep monitoring";$("trustText").textContent=`${days} completed day${days===1?" has":"s have"} been checked against actual results.`;const metrics=performance.metrics||{},loadMae=metrics.home_use?.mae,solarMae=metrics.solar?.mae,maxError=Math.max(Number(loadMae)||0,Number(solarMae)||0,.01);$("loadError").textContent=loadMae==null?"—":kwh(loadMae);$("solarError").textContent=solarMae==null?"—":kwh(solarMae);$("loadErrorBar").style.width=loadMae==null?"0":`${Number(loadMae)/maxError*100}%`;$("solarErrorBar").style.width=solarMae==null?"0":`${Number(solarMae)/maxError*100}%`;$("errorVisual").setAttribute("aria-label",`Average absolute forecast errors: home use ${loadMae==null?"unavailable":kwh(loadMae)}, solar ${solarMae==null?"unavailable":kwh(solarMae)}. Lower is better.`);$("mlWins").textContent=`${wins}/${days}`;$("winRateLabel").textContent=`${Math.round(winRate)}% of validated days`;$("mlWinRing").className="win-ring";$("mlWinRing").style.setProperty("--win",winRate);$("mlWinRing").setAttribute("aria-label",`ML beat the simple forecast on ${wins} of ${days} validated days, ${Math.round(winRate)} percent.`);
+      renderComparison(performance.daily||[]);
+      $("metricTabs").innerHTML=Object.entries(metricConfig).map(([key,cfg])=>`<button class="metric-tab ${key===activeMetric?"active":""}" data-metric="${key}" type="button">${esc(cfg.label)}</button>`).join("");$("metricTabs").querySelectorAll("button").forEach(button=>button.addEventListener("click",()=>{activeMetric=button.dataset.metric;renderPerformance(performance);}));renderChart(performance.daily||[],activeMetric);
+    }
+
+    function renderChart(rows,key){const cfg=metricConfig[key];$("chartMetricLabel").textContent=`${cfg.label} · ${cfg.unit}`;const usable=rows.filter(row=>row[cfg.forecast]!=null&&row[cfg.actual]!=null).slice(-8),target=$("performanceChart");if(!usable.length){target.innerHTML='<div class="empty">No comparable forecast and actual values for this measure yet.</div>';target.setAttribute("aria-label",`${cfg.label} forecast versus actual values are unavailable`);return;}const max=Math.max(...usable.flatMap(row=>[Number(row[cfg.forecast]),Number(row[cfg.actual])]),.01);target.setAttribute("aria-label",`${cfg.label} forecast versus actual for the latest ${usable.length} comparable days`);target.innerHTML=usable.map(row=>{const f=Number(row[cfg.forecast]),a=Number(row[cfg.actual]),isMoney=cfg.unit==="$",main=value=>isMoney?money(value):`${Math.round(value/BATTERY_KWH*100)}%`,sub=value=>isMoney?"":`${num(value)} kWh`,titleValue=value=>isMoney?money(value):`${Math.round(value/BATTERY_KWH*100)}% · ${num(value)} kWh`;return`<div class="bar-group" title="${esc(shortDate(row.date))}: forecast ${titleValue(f)}, actual ${titleValue(a)}"><div class="bar-values"><span class="bar-reading"><b>${main(f)}</b><small>${sub(f)}</small></span><span class="bar-reading"><b>${main(a)}</b><small>${sub(a)}</small></span></div><div class="bars"><i class="bar forecast" style="height:${Math.max(2,f/max*100)}%"></i><i class="bar actual" style="height:${Math.max(2,a/max*100)}%"></i></div><div class="bar-date">${esc(shortDate(row.date).replace(/^[^,]+,\s*/,""))}</div></div>`;}).join("");}
+
+    async function refresh(){const generation=++refreshGeneration;$("refreshButton").disabled=true;$("pageError").classList.add("hidden");let audit;try{audit=await get("/api/optimizer-audit",15000);}catch(error){if(generation!==refreshGeneration)return;$("refreshButton").disabled=false;$("controlPill").textContent="Control data unavailable";$("controlPill").className="status-pill bad";$("pageError").textContent=error.message||"Today’s plan is unavailable.";$("pageError").classList.remove("hidden");return;}if(generation!==refreshGeneration)return;renderAudit(audit);renderPerformance({available:false,reason:"Loading recent results…"});const results=await Promise.allSettled([get("/api/economic-optimizer",60000),get("/api/ml-performance",20000)]);if(generation!==refreshGeneration)return;const preview=results[0].status==="fulfilled"?results[0].value:{available:false,days:[]},performance=results[1].status==="fulfilled"?results[1].value:{available:false,reason:"Recent results are temporarily unavailable"};renderPreview(audit,preview);renderPerformance(performance);const failures=[];if(results[0].status==="rejected")failures.push(`Latest forecast: ${results[0].reason.message}`);if(results[1].status==="rejected")failures.push(`Learning results: ${results[1].reason.message}`);if(failures.length){$("pageError").textContent=`Today’s confirmed plan loaded. ${failures.join(" | ")}`;$("pageError").classList.remove("hidden");}$("refreshButton").disabled=false;}
+    $("refreshButton").addEventListener("click",refresh);refresh();setInterval(refresh,60000);
+  </script>
+</body>
 </html>
