@@ -144,10 +144,7 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn('class="dashboard-section"', body)
         self.assertNotIn("<details", body)
         self.assertNotIn("<summary", body)
-        self.assertLess(
-            body.index("Why today’s plan makes sense"),
-            body.index("Seven-day plan"),
-        )
+        self.assertNotIn("Why today’s plan makes sense", body)
         self.assertIn("Technical details", body)
         self.assertIn("stopping at", body)
         self.assertIn("Battery energy bridge", body)
