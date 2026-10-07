@@ -109,7 +109,10 @@ class EconomicPlanSnapshotTests(unittest.TestCase):
         self.assertAlmostEqual(row[1], 20.0 / snapshot.optimiser.BATTERY_KWH * 100.0)
         self.assertAlmostEqual(row[2], 20.0 / snapshot.optimiser.BATTERY_KWH * 100.0)
         self.assertEqual(row[3], 4.0)
-        self.assertAlmostEqual(row[4], 17.0 / snapshot.optimiser.BATTERY_KWH * 100.0)
+        expected_cutoff = (
+            20.0 - 4.0 / snapshot.optimiser.DISCHARGE_EFF
+        ) / snapshot.optimiser.BATTERY_KWH * 100.0
+        self.assertAlmostEqual(row[4], expected_cutoff)
 
 
 if __name__ == "__main__":

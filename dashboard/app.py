@@ -194,6 +194,13 @@ def optimizer_audit():
                     "expected_5pm_soc": item.get("expected_5pm_soc"),
                     "export_kwh": item.get("export_kwh"),
                     "export_cutoff_soc": item.get("export_cutoff_soc"),
+                    "expected_post_export_soc": (
+                        float(daily["post_export_energy"])
+                        / ECONOMIC_BATTERY_KWH
+                        * 100.0
+                        if daily.get("post_export_energy") is not None
+                        else None
+                    ),
                     "expected_end_soc": item.get("expected_end_soc"),
                     "grid_import_kwh": item.get("grid_import_kwh"),
                     "net_value": item.get("net_value"),

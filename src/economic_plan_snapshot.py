@@ -115,14 +115,17 @@ def build_plan(now=None):
                 d.get("end_energy"),
             )
             end_energy = float(d["end_energy"])
-            post_export = d.get("post_export_energy")
-            if post_export is not None:
-                cutoff_energy = max(optimiser.MIN_KWH, float(post_export))
-            else:
-                cutoff_energy = max(
-                    optimiser.MIN_KWH,
-                    pre_export - export / optimiser.DISCHARGE_EFF,
-                )
+            # FoxESS needs the SOC at which forced discharge itself must stop.
+            # The simulator's post_export_energy is lower because it also
+            # includes forecast household consumption across the 5-9PM window;
+            # storing that value as fdSoc would sell the household allowance as
+            # well.  Keep post_export_energy in plan_json for the dashboard, but
+            # freeze the predicted scheduler cutoff from expected 5PM energy and
+            # meter-side AC export after conversion losses.
+            cutoff_energy = max(
+                optimiser.MIN_KWH,
+                pre_export - export / optimiser.DISCHARGE_EFF,
+            )
             if charge > 0 and export > 0:
                 reason = "Buy cheap energy; export only the safe premium surplus."
             elif charge > 0:
@@ -143,7 +146,7 @@ def build_plan(now=None):
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             """, (
-                day, created, "load_candidate_v2/calibrated-safe-v1",
+                day, created, "load_candidate_v2/calibrated-safe-v1/cutoff-v2",
                 d["solar"], forecast["predicted_load_kwh"],
                 forecast["safe_load_kwh"], charge,
                 post_shoulder / optimiser.BATTERY_KWH * 100.0,

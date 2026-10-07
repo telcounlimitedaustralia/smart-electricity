@@ -138,6 +138,24 @@ class JointControllerTests(unittest.TestCase):
         self.assertEqual(export["workMode"], "ForceDischarge")
         self.assertGreaterEqual(export["extraParam"]["fdSoc"], 45.0)
 
+    def test_export_preview_uses_predicted_5pm_cutoff_then_live_rechecks_it(self):
+        predicted = plan(
+            export_kwh=22.0,
+            export_cutoff_soc=44.9,
+            plan_json=json.dumps({
+                "daily": {
+                    "required_post_export_soc": 35.9,
+                    "required_post_export_energy": 15.08,
+                }
+            }),
+        )
+
+        midday = controller.desired_groups([], predicted, "export", 66.0)
+        final = controller.desired_groups([], predicted, "export", 100.0)
+
+        self.assertEqual(midday[0]["extraParam"]["fdSoc"], 44.9)
+        self.assertEqual(final[0]["extraParam"]["fdSoc"], 44.9)
+
     def test_export_replaces_overlapping_same_mode_period(self):
         previous = group(17, 20, "ForceDischarge", 49.0)
         previous["startMinute"] = 5
