@@ -55,6 +55,8 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
                 "required_post_export_energy": 15.1,
                 "post_export_energy": 17.0,
                 "solar_only_5pm_soc": 67.7,
+                "forecast_draw_to_recovery": 10.9,
+                "grid_stored": 13.3,
                 "pre_10am_grid_import": 0.0,
                 "next_recharge_timestamp": "2026-10-06T09:00:00+11:00",
                 "next_recharge_type": "solar",
@@ -113,10 +115,13 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn("My Battery Plan", body)
         self.assertIn("Current recommendation for today", body)
         self.assertIn("Seven-day plan", body)
-        self.assertIn("Show technical details", body)
-        self.assertIn("predicted FoxESS selling cutoff", body)
+        self.assertIn("Forecast versus actual", body)
+        self.assertIn("Total solar forecast", body)
+        self.assertIn("Home use until recharge", body)
+        self.assertIn('class="section-toggle"', body)
+        self.assertIn("Technical details", body)
+        self.assertIn("stopping at", body)
         self.assertIn("Battery when calculated", body)
-        self.assertIn("Solar forecast", body)
         self.assertNotIn("Morning battery", body)
 
     def test_audit_api_returns_frozen_plan_live_state_and_execution(self):
@@ -137,6 +142,14 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
             17.0 / 42.0 * 100.0,
         )
         self.assertEqual(data["frozen"]["days"][0]["solar_only_5pm_soc"], 67.7)
+        self.assertEqual(data["frozen"]["days"][0]["full_day_solar_kwh"], 32.5)
+        self.assertIsNone(data["frozen"]["days"][0]["actual_solar_so_far_kwh"])
+        self.assertEqual(data["frozen"]["days"][0]["remaining_solar_kwh"], 32.5)
+        self.assertEqual(data["frozen"]["days"][0]["stored_from_grid_kwh"], 13.3)
+        self.assertEqual(
+            data["frozen"]["days"][0]["forecast_draw_to_recharge_kwh"],
+            10.9,
+        )
         self.assertEqual(
             data["frozen"]["days"][0]["solar_basis"],
             "FULL_DAY_PROTECTED_FORECAST",

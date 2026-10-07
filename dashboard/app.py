@@ -171,6 +171,14 @@ def optimizer_audit():
         """).fetchone()
         if latest_created:
             created_at = latest_created["created_at"]
+            actual_solar_at_freeze = 0.0
+            if table_exists("foxess_live"):
+                actual_solar_at_freeze = float(conn.execute("""
+                    SELECT COALESCE(SUM(pv_kw) / 12.0, 0)
+                    FROM foxess_live
+                    WHERE substr(timestamp, 1, 10) = ?
+                      AND timestamp <= ?
+                """, (today, created_at)).fetchone()[0] or 0.0)
             rows = conn.execute("""
                 SELECT * FROM economic_plan_actions
                 WHERE created_at = ? ORDER BY plan_date
@@ -184,10 +192,40 @@ def optimizer_audit():
                     plan_payload = {}
                 daily = plan_payload.get("daily") or {}
                 is_today = item.get("plan_date") == today
+                remaining_solar = float(item.get("solar_kwh") or 0.0)
+                point_solar = float(
+                    daily.get("solar_point", remaining_solar) or 0.0
+                )
+                full_day_solar = point_solar + (
+                    actual_solar_at_freeze if is_today else 0.0
+                )
+                start_energy = daily.get("start_energy")
+                start_soc = (
+                    float(start_energy) / ECONOMIC_BATTERY_KWH * 100.0
+                    if start_energy is not None
+                    else plan_payload.get("start_soc")
+                )
+                expected_5pm_soc = item.get("expected_5pm_soc")
+                expected_end_soc = item.get("expected_end_soc")
+                grid_stored = daily.get("grid_stored")
+                solar_only_5pm_kwh = daily.get("solar_only_5pm_energy")
+                solar_only_5pm_soc = daily.get("solar_only_5pm_soc")
+                if solar_only_5pm_soc is None and solar_only_5pm_kwh is not None:
+                    solar_only_5pm_soc = (
+                        float(solar_only_5pm_kwh)
+                        / ECONOMIC_BATTERY_KWH * 100.0
+                    )
                 frozen_days.append({
                     "date": item.get("plan_date"),
                     "model_version": item.get("model_version"),
                     "solar_kwh": item.get("solar_kwh"),
+                    "full_day_solar_kwh": round(full_day_solar, 2),
+                    "actual_solar_so_far_kwh": (
+                        round(actual_solar_at_freeze, 2) if is_today else None
+                    ),
+                    "remaining_solar_kwh": (
+                        round(point_solar, 2) if is_today else round(full_day_solar, 2)
+                    ),
                     "solar_basis": (
                         "REMAINING_PROTECTED_FORECAST_FROM_SNAPSHOT"
                         if is_today
@@ -196,10 +234,22 @@ def optimizer_audit():
                     "forecast_from": created_at if is_today else None,
                     "ml_load_kwh": item.get("point_load_kwh"),
                     "protected_load_kwh": item.get("safe_load_kwh"),
-                    "starting_soc": plan_payload.get("start_soc"),
+                    "starting_soc": start_soc,
+                    "battery_start_kwh": (
+                        float(start_energy)
+                        if start_energy is not None
+                        else float(start_soc) / 100.0 * ECONOMIC_BATTERY_KWH
+                        if start_soc is not None
+                        else None
+                    ),
                     "charge_kwh": item.get("charge_kwh"),
                     "charge_target_soc": item.get("charge_target_soc"),
-                    "expected_5pm_soc": item.get("expected_5pm_soc"),
+                    "stored_from_grid_kwh": grid_stored,
+                    "expected_5pm_soc": expected_5pm_soc,
+                    "battery_5pm_kwh": (
+                        float(expected_5pm_soc) / 100.0 * ECONOMIC_BATTERY_KWH
+                        if expected_5pm_soc is not None else None
+                    ),
                     "export_kwh": item.get("export_kwh"),
                     "export_cutoff_soc": item.get("export_cutoff_soc"),
                     "expected_post_export_soc": (
@@ -209,14 +259,31 @@ def optimizer_audit():
                         if daily.get("post_export_energy") is not None
                         else None
                     ),
-                    "expected_end_soc": item.get("expected_end_soc"),
+                    "expected_end_soc": expected_end_soc,
+                    "battery_end_kwh": (
+                        float(expected_end_soc) / 100.0 * ECONOMIC_BATTERY_KWH
+                        if expected_end_soc is not None else None
+                    ),
                     "grid_import_kwh": item.get("grid_import_kwh"),
                     "net_value": item.get("net_value"),
                     "baseline_value": item.get("baseline_value"),
                     "reason": item.get("reason"),
                     "required_reserve_soc": daily.get("required_post_export_soc"),
                     "required_reserve_kwh": daily.get("required_post_export_energy"),
-                    "solar_only_5pm_soc": daily.get("solar_only_5pm_soc"),
+                    "forecast_draw_to_recharge_kwh": daily.get(
+                        "forecast_draw_to_recovery"
+                    ),
+                    "foxess_min_soc": 10.0,
+                    "foxess_min_kwh": ECONOMIC_BATTERY_KWH * 0.10,
+                    "solar_only_5pm_soc": solar_only_5pm_soc,
+                    "solar_only_5pm_kwh": (
+                        float(solar_only_5pm_kwh)
+                        if solar_only_5pm_kwh is not None
+                        else float(solar_only_5pm_soc)
+                        / 100.0 * ECONOMIC_BATTERY_KWH
+                        if solar_only_5pm_soc is not None
+                        else None
+                    ),
                     "pre_10am_import_kwh": daily.get("pre_10am_grid_import"),
                     "next_recharge_timestamp": daily.get("next_recharge_timestamp"),
                     "next_recharge_type": daily.get("next_recharge_type"),
@@ -1212,6 +1279,28 @@ def economic_optimizer():
                         2
                     ),
 
+                "full_day_solar_kwh":
+                    round(
+                        d.get("solar_point", d.get("solar", 0))
+                        + (
+                            float(actual_today_solar)
+                            if day == today_string
+                            else 0.0
+                        ),
+                        2,
+                    ),
+
+                "actual_solar_so_far_kwh": (
+                    round(float(actual_today_solar), 2)
+                    if day == today_string
+                    else None
+                ),
+
+                "remaining_solar_kwh": round(
+                    d.get("solar_point", d.get("solar", 0)),
+                    2,
+                ),
+
                 "solar_basis": (
                     "ACTUAL_SO_FAR_PLUS_REMAINING_FORECAST"
                     if day == today_string
@@ -1299,6 +1388,13 @@ def economic_optimizer():
                 "required_reserve_soc": round(
                     required_post_export / ECONOMIC_BATTERY_KWH * 100,
                     1,
+                ),
+
+                "foxess_min_soc": 10.0,
+
+                "foxess_min_kwh": round(
+                    ECONOMIC_BATTERY_KWH * 0.10,
+                    2,
                 ),
 
                 "forecast_draw_to_recharge_kwh": round(
