@@ -57,6 +57,22 @@ class ControlSwitchTests(unittest.TestCase):
         self.assertEqual(actual, expected)
         self.assertLess(elapsed, 1.0)
 
+    def test_set_all_uses_one_atomic_transaction_and_records_each_scope(self):
+        now = datetime(2026, 10, 7, 16, 30, tzinfo=TZ)
+        state = set_all(False, "deployment", "controller deployment", self.db_path, now)
+
+        self.assertFalse(state["master_enabled"])
+        self.assertFalse(state["charge_enabled"])
+        self.assertFalse(state["export_enabled"])
+        conn = sqlite3.connect(self.db_path)
+        try:
+            events = conn.execute(
+                "SELECT scope, enabled FROM control_switch_events ORDER BY rowid"
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(events, [("charge", 0), ("export", 0), ("master", 0)])
+
 
 if __name__ == "__main__":
     unittest.main()

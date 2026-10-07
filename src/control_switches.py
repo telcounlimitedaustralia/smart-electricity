@@ -2,6 +2,7 @@
 
 import argparse
 import sqlite3
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -9,6 +10,7 @@ DB = "data/energy.db"
 TZ = ZoneInfo("Australia/Sydney")
 VALID_SCOPES = {"master", "charge", "export"}
 DB_BUSY_TIMEOUT_MS = 30000
+DB_WRITE_ATTEMPTS = 6
 
 
 def connect(db_path):
@@ -46,6 +48,24 @@ def ensure_schema(conn):
             updated_at, updated_by
         ) VALUES (1, 0, 0, 0, ?, 'safe-default')
     """, (datetime.now(TZ).isoformat(timespec="seconds"),))
+
+
+def write_with_retry(callback, db_path=DB):
+    """Commit one short switch transaction despite collector overlap."""
+    for attempt in range(DB_WRITE_ATTEMPTS):
+        conn = connect(db_path)
+        try:
+            ensure_schema(conn)
+            callback(conn)
+            conn.commit()
+            return
+        except sqlite3.OperationalError as exc:
+            conn.rollback()
+            if "locked" not in str(exc).lower() or attempt + 1 == DB_WRITE_ATTEMPTS:
+                raise
+            time.sleep(min(5, attempt + 1))
+        finally:
+            conn.close()
 
 
 def get_switches(db_path=DB):
@@ -93,26 +113,47 @@ def set_switch(scope, enabled, actor="operator", detail="", db_path=DB, now=None
     now = now or datetime.now(TZ)
     stamp = now.isoformat(timespec="seconds")
     column = f"{scope}_enabled"
-    conn = connect(db_path)
-    ensure_schema(conn)
-    conn.execute(
-        f"UPDATE control_switches SET {column} = ?, updated_at = ?, updated_by = ? WHERE id = 1",
-        (int(enabled), stamp, actor),
-    )
-    conn.execute(
-        "INSERT INTO control_switch_events VALUES (?, ?, ?, ?, ?)",
-        (stamp, scope, int(enabled), actor, detail or "operator switch"),
-    )
-    conn.commit()
-    conn.close()
+
+    def persist(conn):
+        conn.execute(
+            f"UPDATE control_switches SET {column} = ?, updated_at = ?, updated_by = ? WHERE id = 1",
+            (int(enabled), stamp, actor),
+        )
+        conn.execute(
+            "INSERT INTO control_switch_events VALUES (?, ?, ?, ?, ?)",
+            (stamp, scope, int(enabled), actor, detail or "operator switch"),
+        )
+
+    write_with_retry(persist, db_path)
     return get_switches(db_path)
 
 
 def set_all(enabled, actor="operator", detail="", db_path=DB, now=None):
-    state = None
-    for scope in ("charge", "export", "master"):
-        state = set_switch(scope, enabled, actor, detail, db_path, now)
-    return state
+    if not isinstance(enabled, bool):
+        raise ValueError("enabled must be a boolean")
+    now = now or datetime.now(TZ)
+    stamp = now.isoformat(timespec="seconds")
+
+    def persist(conn):
+        conn.execute(
+            """
+            UPDATE control_switches
+            SET master_enabled = ?, charge_enabled = ?, export_enabled = ?,
+                updated_at = ?, updated_by = ?
+            WHERE id = 1
+            """,
+            (int(enabled), int(enabled), int(enabled), stamp, actor),
+        )
+        conn.executemany(
+            "INSERT INTO control_switch_events VALUES (?, ?, ?, ?, ?)",
+            [
+                (stamp, scope, int(enabled), actor, detail or "operator switch")
+                for scope in ("charge", "export", "master")
+            ],
+        )
+
+    write_with_retry(persist, db_path)
+    return get_switches(db_path)
 
 
 def phase_enabled(state, phase):
