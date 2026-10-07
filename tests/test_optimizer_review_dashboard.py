@@ -165,6 +165,7 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn('aria-label="Forecast versus actual key results"', body)
         self.assertIn('class="compare-pct"', body)
         self.assertIn('class="compare-kwh"', body)
+        self.assertNotIn('class="compare-meter"', body)
         self.assertNotIn("Grid import</th>", body)
         self.assertNotIn("Import cost</th>", body)
         self.assertNotIn("Net result</th>", body)
