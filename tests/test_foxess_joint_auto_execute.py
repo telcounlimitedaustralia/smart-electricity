@@ -324,6 +324,33 @@ class JointControllerTests(unittest.TestCase):
             self.assertEqual(stamp, now.isoformat())
             self.assertEqual(soc, 61.0)
 
+    def test_control_can_use_direct_refresh_without_database_write(self):
+        now = datetime(2026, 10, 7, 16, 55, tzinfo=controller.TZ)
+        with tempfile.TemporaryDirectory() as folder:
+            db_path = os.path.join(folder, "energy.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute("""
+                CREATE TABLE foxess_live (
+                    id INTEGER PRIMARY KEY, timestamp TEXT, battery_soc REAL
+                )
+            """)
+            conn.execute(
+                "INSERT INTO foxess_live(timestamp, battery_soc) VALUES (?, ?)",
+                ((now - timedelta(minutes=11)).isoformat(), 50.0),
+            )
+            conn.commit()
+            conn.close()
+
+            stamp, soc = controller.current_soc(
+                now,
+                "TEST-SN",
+                db_path=db_path,
+                refresh=lambda _device_sn: (now.isoformat(), 63.0),
+            )
+
+            self.assertEqual(stamp, now.isoformat())
+            self.assertEqual(soc, 63.0)
+
     def test_deployment_dry_run_can_select_tomorrows_fresh_snapshot(self):
         now = datetime(2026, 10, 4, 23, 35, tzinfo=controller.TZ)
         with tempfile.TemporaryDirectory() as folder:

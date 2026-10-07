@@ -174,10 +174,36 @@ def latest_soc(now, db_path=DB):
 
 
 def refresh_live_telemetry(device_sn):
-    """Fetch and persist a fresh FoxESS reading for a control decision."""
-    from foxess_collector import get_live_data, save_reading
+    """Fetch fresh SOC directly without competing with the data collector.
 
-    return save_reading(device_sn, get_live_data(device_sn))
+    The five-minute collector owns persistence.  A controller fallback only
+    needs the current SOC for its safety calculation, so writing the same
+    reading here can create avoidable SQLite lock contention at control time.
+    """
+    from foxess_collector import get_live_data, value
+
+    data = get_live_data(device_sn)
+    return datetime.now(TZ).isoformat(timespec="seconds"), value(
+        data, "SoC", "SoC_1"
+    )
+
+
+def validate_refreshed_soc(now, refreshed):
+    """Validate a direct FoxESS SOC result using the normal safety rules."""
+    if not isinstance(refreshed, (tuple, list)) or len(refreshed) < 2:
+        return None
+    stamp, raw_soc = refreshed[0], refreshed[1]
+    if raw_soc is None:
+        raise RuntimeError("Current battery SOC unavailable after refresh")
+    age = age_minutes(now, stamp)
+    if age < -2:
+        raise RuntimeError("Refreshed live SOC timestamp is in the future")
+    if age > SOC_MAX_AGE_MINUTES:
+        raise RuntimeError(f"Refreshed live SOC is stale: {age:.1f} minutes old")
+    soc = float(raw_soc)
+    if not MIN_SOC <= soc <= 100.0:
+        raise RuntimeError(f"Unsafe refreshed live SOC value: {soc}")
+    return stamp, soc
 
 
 def current_soc(now, device_sn, db_path=DB, refresh=None):
@@ -195,7 +221,11 @@ def current_soc(now, device_sn, db_path=DB, refresh=None):
             raise
         print(f"WARNING: {exc}; refreshing FoxESS telemetry once")
         refresher = refresh or refresh_live_telemetry
-        refresher(device_sn)
+        direct = validate_refreshed_soc(now, refresher(device_sn))
+        if direct is not None:
+            return direct
+        # Test/custom refreshers may deliberately persist a row and return no
+        # direct value.  Preserve that supported behaviour.
         return latest_soc(now, db_path)
 
 
