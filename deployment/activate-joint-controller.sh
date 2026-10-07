@@ -26,14 +26,19 @@ export PYTHONPATH="$REPO_DIR/src"
 .venv/bin/python src/control_switches.py --all-off
 
 mkdir -p logs data/foxess_schedule_backups backups
+if ! command -v flock >/dev/null 2>&1; then
+  echo "STOP: flock is required to prevent overlapping optimiser processes."
+  exit 1
+fi
 timestamp="$(date +%Y%m%d_%H%M%S)"
 crontab -l > "backups/crontab-before-joint-${timestamp}.txt" 2>/dev/null || true
 cp .env "backups/env-before-joint-${timestamp}" 
 chmod 600 "backups/env-before-joint-${timestamp}"
 
-# Build a fresh plan and prove that both phases can read the real inverter and
-# construct a schedule without transmitting a write.
-.venv/bin/python src/economic_plan_snapshot.py
+# Deployment must not compete with a scheduled, memory-intensive optimiser
+# snapshot. Prove both phases against the latest already-frozen plan without
+# transmitting a write; cron will create fresh plans under a single-instance
+# lock at the normal decision times.
 .venv/bin/python src/foxess_joint_auto_execute.py --phase charge --dry-run --ignore-switches --use-latest-frozen-plan
 .venv/bin/python src/foxess_joint_auto_execute.py --phase export --dry-run --ignore-switches --use-latest-frozen-plan
 if grep -q '^FOXESS_CONTROL_MODE=' .env; then

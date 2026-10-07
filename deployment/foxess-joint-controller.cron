@@ -3,16 +3,16 @@
 CRON_TZ=Australia/Sydney
 
 # Freeze the decision ten minutes before each control phase.
-45 9 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
+45 9 * * * cd /home/kaji_islam/smart-electricity && flock -n data/economic-plan.lock .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
 55 9 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/foxess_joint_auto_execute.py --phase charge >> logs/joint-controller.log 2>&1
 
 # Stop Mode Scheduler after the cheap-charge window, retaining its reusable
 # periods, then reconcile the forecast.
 0 14 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/foxess_joint_auto_execute.py --phase watchdog >> logs/joint-controller.log 2>&1
-2 14 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
+2 14 * * * cd /home/kaji_islam/smart-electricity && flock -n data/economic-plan.lock .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
 
 # Refresh immediately before premium export, then apply the safe live-SOC cutoff.
-45 16 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
+45 16 * * * cd /home/kaji_islam/smart-electricity && flock -n data/economic-plan.lock .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
 55 16 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/foxess_joint_auto_execute.py --phase export >> logs/joint-controller.log 2>&1
 
 # Stop Mode Scheduler after the premium window; do not delete its reusable periods.
