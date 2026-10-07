@@ -111,10 +111,13 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
         self.assertIn("My Battery Plan", body)
-        self.assertIn("What will happen today?", body)
+        self.assertIn("Current recommendation for today", body)
         self.assertIn("Seven-day plan", body)
         self.assertIn("Show technical details", body)
         self.assertIn("predicted FoxESS selling cutoff", body)
+        self.assertIn("Battery when calculated", body)
+        self.assertIn("Solar forecast", body)
+        self.assertNotIn("Morning battery", body)
 
     def test_audit_api_returns_frozen_plan_live_state_and_execution(self):
         with patch.object(dashboard_app, "DB", self.db_path), patch.object(
@@ -126,6 +129,7 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         data = response.get_json()
         self.assertTrue(data["available"])
         self.assertEqual(data["frozen"]["created_at"], "2026-10-05T09:45:00+11:00")
+        self.assertFalse(data["frozen"]["is_final_export_plan"])
         self.assertEqual(data["frozen"]["days"][0]["charge_kwh"], 14.0)
         self.assertEqual(data["frozen"]["days"][0]["export_kwh"], 21.0)
         self.assertAlmostEqual(
@@ -133,6 +137,10 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
             17.0 / 42.0 * 100.0,
         )
         self.assertEqual(data["frozen"]["days"][0]["solar_only_5pm_soc"], 67.7)
+        self.assertEqual(
+            data["frozen"]["days"][0]["solar_basis"],
+            "FULL_DAY_PROTECTED_FORECAST",
+        )
         self.assertEqual(data["live"]["battery_soc"], 35.0)
         self.assertEqual(data["events"][0]["status"], "verified")
         self.assertEqual(data["control"]["schedule"]["import_window"], "10:05-13:55")

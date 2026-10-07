@@ -155,6 +155,7 @@ def optimizer_audit():
     """Return the frozen executable plan and its verified execution trail."""
     conn = db()
     now = datetime.now(SYDNEY_TZ)
+    today = now.date().isoformat()
 
     def table_exists(name):
         return bool(conn.execute(
@@ -182,10 +183,17 @@ def optimizer_audit():
                 except (TypeError, ValueError, json.JSONDecodeError):
                     plan_payload = {}
                 daily = plan_payload.get("daily") or {}
+                is_today = item.get("plan_date") == today
                 frozen_days.append({
                     "date": item.get("plan_date"),
                     "model_version": item.get("model_version"),
                     "solar_kwh": item.get("solar_kwh"),
+                    "solar_basis": (
+                        "REMAINING_PROTECTED_FORECAST_FROM_SNAPSHOT"
+                        if is_today
+                        else "FULL_DAY_PROTECTED_FORECAST"
+                    ),
+                    "forecast_from": created_at if is_today else None,
                     "ml_load_kwh": item.get("point_load_kwh"),
                     "protected_load_kwh": item.get("safe_load_kwh"),
                     "starting_soc": plan_payload.get("start_soc"),
@@ -216,8 +224,19 @@ def optimizer_audit():
                     "export_revenue": daily.get("export_revenue"),
                     "degradation_cost": daily.get("degradation_cost"),
                 })
+            created_local = datetime.fromisoformat(
+                str(created_at).replace("Z", "+00:00")
+            )
+            if created_local.tzinfo is None:
+                created_local = created_local.replace(tzinfo=SYDNEY_TZ)
+            else:
+                created_local = created_local.astimezone(SYDNEY_TZ)
             frozen = {
                 "created_at": created_at,
+                "is_final_export_plan": (
+                    created_local.date() == now.date()
+                    and created_local.hour * 60 + created_local.minute >= 16 * 60 + 45
+                ),
                 "days": frozen_days,
             }
 
@@ -242,7 +261,6 @@ def optimizer_audit():
 
     switches = get_switches(DB)
     control_mode = os.getenv("FOXESS_CONTROL_MODE", "rule").strip().lower()
-    today = now.date().isoformat()
     latest_by_phase = {}
     for event in events:
         if event["plan_date"] == today and event["phase"] not in latest_by_phase:
@@ -1151,6 +1169,20 @@ def economic_optimizer():
                 "pre_export_energy"
             )
 
+            preview_export_cutoff_soc = (
+                None
+                if pre_export is None
+                else max(
+                    10.0,
+                    (
+                        float(pre_export)
+                        - premium_export_actual / ECONOMIC_DISCHARGE_EFF
+                    ) / ECONOMIC_BATTERY_KWH * 100.0,
+                )
+            )
+
+            post_export = d.get("post_export_energy")
+
             end_energy = d.get(
                 "end_energy"
             )
@@ -1209,6 +1241,11 @@ def economic_optimizer():
                 "battery_start_kwh": round(start_day_energy, 2),
 
                 "battery_start_soc": round(
+                    start_day_energy / ECONOMIC_BATTERY_KWH * 100,
+                    1,
+                ),
+
+                "starting_soc": round(
                     start_day_energy / ECONOMIC_BATTERY_KWH * 100,
                     1,
                 ),
@@ -1303,6 +1340,23 @@ def economic_optimizer():
                 "simulated_premium_export_kwh":
                     round(premium_export_actual, 2),
 
+                "export_kwh": round(premium_export_actual, 2),
+
+                "export_cutoff_soc": (
+                    None
+                    if preview_export_cutoff_soc is None
+                    else round(preview_export_cutoff_soc, 1)
+                ),
+
+                "expected_post_export_soc": (
+                    None
+                    if post_export is None
+                    else round(
+                        float(post_export) / ECONOMIC_BATTERY_KWH * 100.0,
+                        1,
+                    )
+                ),
+
                 "battery_used_for_export_kwh": round(
                     export_battery_draw,
                     2,
@@ -1322,6 +1376,16 @@ def economic_optimizer():
                     ),
 
                 "soc_5pm":
+                    None
+                    if pre_export is None
+                    else round(
+                        pre_export
+                        / ECONOMIC_BATTERY_KWH
+                        * 100,
+                        1
+                    ),
+
+                "expected_5pm_soc":
                     None
                     if pre_export is None
                     else round(
