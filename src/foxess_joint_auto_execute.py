@@ -166,6 +166,32 @@ def latest_soc(now, db_path=DB):
     return row[0], soc
 
 
+def refresh_live_telemetry(device_sn):
+    """Fetch and persist a fresh FoxESS reading for a control decision."""
+    from foxess_collector import get_live_data, save_reading
+
+    return save_reading(device_sn, get_live_data(device_sn))
+
+
+def current_soc(now, device_sn, db_path=DB, refresh=None):
+    """Return safe SOC, refreshing FoxESS once when stored telemetry is stale.
+
+    The five-minute collector remains the normal data source.  A control event
+    must not fail merely because that independent cron job was delayed, so the
+    controller performs one direct read before rejecting unavailable telemetry.
+    The same age and range validation is applied to the refreshed database row.
+    """
+    try:
+        return latest_soc(now, db_path)
+    except RuntimeError as exc:
+        if "SOC is stale" not in str(exc) and "SOC unavailable" not in str(exc):
+            raise
+        print(f"WARNING: {exc}; refreshing FoxESS telemetry once")
+        refresher = refresh or refresh_live_telemetry
+        refresher(device_sn)
+        return latest_soc(now, db_path)
+
+
 def required_reserve_soc(plan):
     """Recover the optimiser's protected post-export reserve."""
     reserve = float(plan.get("export_cutoff_soc") or MIN_SOC)
@@ -520,8 +546,6 @@ def main():
         now,
         use_latest_frozen=args.use_latest_frozen_plan,
     )
-    stamp, soc = latest_soc(now)
-
     control_mode = os.getenv("FOXESS_CONTROL_MODE", "rule").strip().lower()
     if not args.dry_run and control_mode != "joint":
         raise RuntimeError(
@@ -529,6 +553,7 @@ def main():
         )
 
     device_sn = validate_device(get_device())
+    stamp, soc = current_soc(now, device_sn)
     current, existing = read_schedule(device_sn)
     switches = get_switches(DB)
     enabled = args.ignore_switches or phase_enabled(switches, args.phase)
