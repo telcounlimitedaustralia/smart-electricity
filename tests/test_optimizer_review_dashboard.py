@@ -156,6 +156,9 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn('id="mlWinRing"', body)
         self.assertIn('id="loadErrorBar"', body)
         self.assertIn('id="solarErrorBar"', body)
+        self.assertIn('aria-label="Forecast versus actual chart"', body)
+        self.assertIn('id="chartMetricLabel"', body)
+        self.assertLess(body.index('id="performanceChart"'), body.index("Seven-day plan"))
         self.assertIn("lower is better", body)
         self.assertNotIn("Morning battery", body)
 
