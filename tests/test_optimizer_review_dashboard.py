@@ -144,6 +144,8 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn('class="plan-pct"', body)
         self.assertIn('class="plan-kwh"', body)
         self.assertIn('class="dashboard-section"', body)
+        self.assertIn('<details class="comparison-disclosure" id="weekPlanDisclosure">', body)
+        self.assertNotIn('<details class="comparison-disclosure" id="weekPlanDisclosure" open>', body)
         self.assertIn('<details class="comparison-disclosure">', body)
         self.assertIn("Forecast versus actual details", body)
         self.assertNotIn("Why today’s plan makes sense", body)

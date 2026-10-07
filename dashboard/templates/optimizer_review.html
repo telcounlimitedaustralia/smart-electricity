@@ -123,16 +123,18 @@
     </section>
 
     <section class="dashboard-section" id="weekDetails">
-      <header class="dashboard-header"><h2 id="weekHeading">Seven-day plan</h2><p id="weekDescription">Today remains a prediction until the final export plan is frozen at 4:45 PM and checked against live SOC at 4:55 PM.</p></header>
-      <div class="section-content">
-        <div class="table-panel"><div class="table-wrap"><table class="plan-table" aria-label="Seven-day battery plan">
-          <thead>
-            <tr><th>Day</th><th><span class="plan-heading"><span aria-hidden="true">☀</span><span>Solar outlook</span></span></th><th><span class="plan-heading"><span aria-hidden="true">⚡</span><span>Buy cheaply</span></span></th><th><span class="plan-heading"><span aria-hidden="true">🛡</span><span>Keep for home</span></span></th><th><span class="plan-heading"><span aria-hidden="true">↗</span><span>Sell at premium</span></span></th><th><span class="plan-heading"><span aria-hidden="true">☾</span><span>Expected midnight</span></span></th><th>Why?</th></tr>
-          </thead>
-          <tbody id="planBody"><tr><td colspan="7" class="empty">Loading the seven-day plan…</td></tr></tbody>
-        </table></div></div>
-        <p class="table-note">Percentages compare energy with the 42 kWh battery capacity. Solar is generation before household use; battery movement includes conversion losses.</p>
-      </div>
+      <details class="comparison-disclosure" id="weekPlanDisclosure">
+        <summary><span class="comparison-summary"><b id="weekHeading">Seven-day plan</b><small id="weekDescription">Today remains a prediction until the final export plan is frozen at 4:45 PM and checked against live SOC at 4:55 PM.</small></span></summary>
+        <div class="section-content">
+          <div class="table-panel"><div class="table-wrap"><table class="plan-table" aria-label="Seven-day battery plan">
+            <thead>
+              <tr><th>Day</th><th><span class="plan-heading"><span aria-hidden="true">☀</span><span>Solar outlook</span></span></th><th><span class="plan-heading"><span aria-hidden="true">⚡</span><span>Buy cheaply</span></span></th><th><span class="plan-heading"><span aria-hidden="true">🛡</span><span>Keep for home</span></span></th><th><span class="plan-heading"><span aria-hidden="true">↗</span><span>Sell at premium</span></span></th><th><span class="plan-heading"><span aria-hidden="true">☾</span><span>Expected midnight</span></span></th><th>Why?</th></tr>
+            </thead>
+            <tbody id="planBody"><tr><td colspan="7" class="empty">Loading the seven-day plan…</td></tr></tbody>
+          </table></div></div>
+          <p class="table-note">Percentages compare energy with the 42 kWh battery capacity. Solar is generation before household use; battery movement includes conversion losses.</p>
+        </div>
+      </details>
     </section>
 
     <section class="dashboard-section" id="comparisonDetails">
