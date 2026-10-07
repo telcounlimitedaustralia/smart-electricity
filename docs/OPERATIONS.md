@@ -20,30 +20,39 @@ The production sequence is defined in `deployment/foxess-joint-controller.cron`:
 |---|---|
 | 09:45 | Freeze a fresh optimiser plan |
 | 09:55 | Apply or clear the 10:05-13:55 ForceCharge period; notify Telegram after verified read-back |
-| 14:00 | Reconcile the forecast after the shoulder window; no control write |
+| 14:00 | Turn Mode Scheduler off while retaining its reusable periods |
+| 14:02 | Reconcile the forecast after the shoulder window |
 | 16:45 | Freeze a fresh plan using current SOC and forecast |
 | 16:55 | Apply or clear the 17:05-20:55 ForceDischarge period; notify Telegram after verified read-back |
-| 21:00 | Remove controller-owned periods and verify the remaining schedule |
+| 21:00 | Turn Mode Scheduler off while retaining its reusable periods |
 
 Production writes require `FOXESS_CONTROL_MODE=joint`. In that mode the legacy
 rule executor exits successfully without writing, even if an old cron entry is
 still present. Joint execution refuses a plan older than 20 minutes or an SOC
 reading older than 10 minutes, preserves unrelated schedule groups, verifies
-every write, and restores the original schedule if verification fails.
+every full-list replacement. It inventories the complete V2 schedule before
+each action: zero matching periods creates one, exactly one matching period is
+updated, and duplicates or overlaps are rejected with the scheduler disabled.
+The V1 master switch starts and stops the retained periods; groups=[] is never
+used as cleanup. If replacement verification fails, the scheduler is disabled
+without attempting a second schedule write that could create another card.
 
 Activation is deliberately fail-closed. From the VM, run
 `bash deployment/activate-joint-controller.sh`. It refuses tracked local
 changes, updates to the reviewed branch, runs the full tests, backs up the
-crontab and environment, creates a fresh plan, performs two no-write FoxESS
-dry runs, switches the exclusive controller mode, and installs the marked cron
-block. Use `bash deployment/rollback-joint-controller.sh` to clear owned
-schedule periods, restore rule ownership, and remove that cron block.
+crontab and environment, creates a fresh plan, performs two no-write FoxESS V2
+inventory dry runs, switches the exclusive controller mode, installs the marked
+cron block, and leaves every automation switch OFF. Compare the inventory with
+the FoxESS app before enabling the controller from the dashboard. Use
+`bash deployment/rollback-joint-controller.sh` to restore rule ownership and
+remove that cron block.
 
 The authenticated VM dashboard exposes three audited operator switches: master,
 10:05-13:55 charge, and 17:05-20:55 export. OFF is immediate: the database gate
-is changed first, then the matching FoxESS schedule is removed and independently
-read back. ON permits only the next fresh scheduled decision; it never replays an
-old plan. The public Netlify dashboard remains read-only and has no control route.
+is changed first, then the FoxESS scheduler master switch is turned off while
+the reusable periods are retained. ON permits only the next fresh scheduled
+decision; it never replays an old plan. The public Netlify dashboard remains
+read-only and has no control route.
 
 ## Backup baseline
 

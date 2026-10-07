@@ -112,7 +112,7 @@ def update_control_switch():
             return jsonify({
                 "error": (
                     "Switch is OFF in the controller, but immediate FoxESS "
-                    f"schedule cleanup failed: {type(exc).__name__}: {exc}"
+                    f"scheduler stop failed: {type(exc).__name__}: {exc}"
                 ),
                 "switches": state,
             }), 502

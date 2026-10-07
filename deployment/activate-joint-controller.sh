@@ -31,7 +31,10 @@ chmod 600 "backups/env-before-joint-${timestamp}"
 .venv/bin/python src/economic_plan_snapshot.py
 .venv/bin/python src/foxess_joint_auto_execute.py --phase charge --dry-run --ignore-switches --use-latest-frozen-plan
 .venv/bin/python src/foxess_joint_auto_execute.py --phase export --dry-run --ignore-switches --use-latest-frozen-plan
-.venv/bin/python src/control_switches.py --all-on
+# A deployment must never make the first unobserved control write. Leave all
+# gates OFF; enable them from the dashboard only after comparing the V2
+# inventory dry-runs above with the FoxESS app.
+.venv/bin/python src/control_switches.py --all-off
 
 if grep -q '^FOXESS_CONTROL_MODE=' .env; then
   sed -i.bak 's/^FOXESS_CONTROL_MODE=.*/FOXESS_CONTROL_MODE=joint/' .env
@@ -54,6 +57,7 @@ crontab "$new_cron"
 sudo systemctl restart smart-electricity-dashboard.service
 sudo systemctl is-active --quiet smart-electricity-dashboard.service
 
-echo "Joint controller activated. The legacy executor will now skip writes."
+echo "Joint controller installed with all automation switches OFF."
+echo "Verify the FoxESS app, then enable the controller from the dashboard."
 echo "Crontab backup: backups/crontab-before-joint-${timestamp}.txt"
 echo "Environment backup: backups/env-before-joint-${timestamp}"

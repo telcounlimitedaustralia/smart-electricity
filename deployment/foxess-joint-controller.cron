@@ -6,12 +6,14 @@ CRON_TZ=Australia/Sydney
 45 9 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
 55 9 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/foxess_joint_auto_execute.py --phase charge >> logs/joint-controller.log 2>&1
 
-# Reconcile after the 10:05-13:55 cheap-charge window; this writes no settings.
-0 14 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
+# Stop Mode Scheduler after the cheap-charge window, retaining its reusable
+# periods, then reconcile the forecast.
+0 14 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/foxess_joint_auto_execute.py --phase watchdog >> logs/joint-controller.log 2>&1
+2 14 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
 
 # Refresh immediately before premium export, then apply the safe live-SOC cutoff.
 45 16 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/economic_plan_snapshot.py >> logs/joint-controller.log 2>&1
 55 16 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/foxess_joint_auto_execute.py --phase export >> logs/joint-controller.log 2>&1
 
-# Remove owned periods after the 17:05-20:55 premium window and verify cleanup.
+# Stop Mode Scheduler after the premium window; do not delete its reusable periods.
 0 21 * * * cd /home/kaji_islam/smart-electricity && .venv/bin/python src/foxess_joint_auto_execute.py --phase watchdog >> logs/joint-controller.log 2>&1

@@ -15,8 +15,15 @@ from control_switches import get_switches, phase_enabled
 
 DB = "data/energy.db"
 TZ = ZoneInfo("Australia/Sydney")
-GET_PATH = "/op/v3/device/scheduler/get"
-WRITE_PATH = "/op/v3/device/scheduler/enable"
+# V3 adds a new app-visible card and merely disables an overlapping card on
+# H3-Smart firmware.  V2 is the complete-list interface: every write below is
+# a replacement of the active list, never an append.  The independent V1 flag
+# starts/stops the stored periods without sending groups=[] (which only turned
+# the scheduler off and left stale cards in the FoxESS app).
+GET_PATH = "/op/v2/device/scheduler/get"
+WRITE_PATH = "/op/v2/device/scheduler/enable"
+FLAG_GET_PATH = "/op/v1/device/scheduler/get/flag"
+FLAG_SET_PATH = "/op/v1/device/scheduler/set/flag"
 MIN_SOC = 10.0
 BATTERY_KWH = 42.0
 CHARGE_EFFICIENCY = 0.95
@@ -29,8 +36,8 @@ DB_BUSY_TIMEOUT_MS = 60000
 CHARGE_SLOT = (10, 5, 13, 55)
 EXPORT_SLOT = (17, 5, 20, 55)
 
-# Keep recognising every period previously owned by this project so an OFF
-# switch or watchdog can remove an obsolete schedule during migration.
+# Keep recognising every period previously owned by this project so inventory
+# validation can refuse legacy duplicates instead of silently adding another.
 CHARGE_SLOTS = {CHARGE_SLOT, (10, 5, 13, 50), (10, 0, 14, 0)}
 EXPORT_SLOTS = {
     EXPORT_SLOT,
@@ -300,18 +307,62 @@ def base_extra(groups):
     return deepcopy(VERIFIED_EMPTY_SCHEDULER_EXTRA)
 
 
+def validate_phase_inventory(existing, phase):
+    """Return the single reusable period, or reject duplicates/conflicts.
+
+    FoxESS does not expose a stable schedule ID.  Ownership is therefore the
+    canonical time window plus work mode.  Creation is allowed only when the
+    window is genuinely empty in the complete V2 inventory.
+    """
+    target = CHARGE_SLOT if phase == "charge" else EXPORT_SLOT
+    mode = "forcecharge" if phase == "charge" else "forcedischarge"
+    candidates = [
+        group for group in existing
+        if not default_self_use(group) and overlaps_slot(group, target)
+    ]
+    same_mode = [
+        group for group in candidates
+        if normalised_mode(group) == mode
+    ]
+    if len(candidates) > 1:
+        raise RuntimeError(
+            f"Duplicate/overlapping FoxESS {phase} periods found; "
+            "scheduler left disabled for manual cleanup"
+        )
+    if candidates and not same_mode:
+        raise RuntimeError(
+            f"Conflicting FoxESS period overlaps the {phase} window; "
+            "scheduler left disabled"
+        )
+    return same_mode[0] if same_mode else None
+
+
+def phase_action_required(plan, phase, live_soc):
+    """Return whether this fresh decision requires the phase to run."""
+    if phase == "charge":
+        charge = float(plan["charge_kwh"])
+        target = live_soc + max(0.0, charge) * CHARGE_EFFICIENCY / BATTERY_KWH * 100.0
+        return charge >= 0.5 and min(100.0, target) > live_soc + 0.5
+    export = float(plan["export_kwh"])
+    reserve = required_reserve_soc(plan)
+    planned_cutoff = float(plan["export_cutoff_soc"])
+    live_cutoff = live_soc - export / DISCHARGE_EFFICIENCY / BATTERY_KWH * 100.0
+    cutoff = max(MIN_SOC, reserve, planned_cutoff, live_cutoff)
+    return export >= 0.5 and cutoff < live_soc - 0.5
+
+
 def desired_groups(existing, plan, phase, live_soc, enabled=True):
-    """Return the complete schedule, replacing overlapping same-mode periods."""
+    """Return a canonical full-list replacement for one control phase."""
+    if not enabled:
+        return outbound_groups(existing)
+    validate_phase_inventory(existing, phase)
     groups = [
         deepcopy(group)
         for group in existing
         if active_group(group)
-        and not managed(group)
+        and not scope_managed(group, phase)
         and not default_self_use(group)
     ]
-    if phase == "watchdog" or not enabled:
-        return groups
-
     template = base_extra(existing)
     if phase == "charge":
         charge = float(plan["charge_kwh"])
@@ -335,7 +386,8 @@ def desired_groups(existing, plan, phase, live_soc, enabled=True):
                 "endHour": CHARGE_SLOT[2], "endMinute": CHARGE_SLOT[3],
                 "workMode": "ForceCharge", "extraParam": extra,
             })
-        return groups
+            return groups
+        return outbound_groups(existing)
 
     export = float(plan["export_kwh"])
     reserve = required_reserve_soc(plan)
@@ -350,7 +402,8 @@ def desired_groups(existing, plan, phase, live_soc, enabled=True):
             "endHour": EXPORT_SLOT[2], "endMinute": EXPORT_SLOT[3],
             "workMode": "ForceDischarge", "extraParam": extra,
         })
-    return groups
+        return groups
+    return outbound_groups(existing)
 
 
 def group_signature(groups):
@@ -407,12 +460,33 @@ def read_schedule(device_sn):
     if not response or response.get("errno") != 0:
         raise RuntimeError(f"Scheduler read failed: {response}")
     result = response.get("result") or {}
-    # FoxESS represents a successful clear (groups=[]) by disabling the
-    # scheduler.  Disabled means there are no active periods; stale groups in
-    # the response must not block cleanup verification or tomorrow's re-enable.
-    if int(result.get("enable", 0)) != 1:
-        return response, []
     return response, result.get("groups") or []
+
+
+def scheduler_flag(device_sn):
+    response = foxess_post(FLAG_GET_PATH, {"deviceSN": device_sn})
+    if not response or response.get("errno") != 0:
+        raise RuntimeError(f"Scheduler flag read failed: {response}")
+    result = response.get("result") or {}
+    if result.get("support") is False:
+        raise RuntimeError("FoxESS scheduler flag is not supported")
+    return bool(int(result.get("enable", 0)))
+
+
+def set_scheduler_flag(device_sn, enabled, attempts=VERIFY_ATTEMPTS,
+                       wait=VERIFY_WAIT_SECONDS):
+    response = foxess_post(FLAG_SET_PATH, {
+        "deviceSN": device_sn,
+        "enable": int(bool(enabled)),
+    })
+    if not response or response.get("errno") != 0:
+        raise RuntimeError(f"Scheduler flag write failed: {response}")
+    for _ in range(attempts):
+        if wait:
+            time.sleep(wait)
+        if scheduler_flag(device_sn) == bool(enabled):
+            return
+    raise RuntimeError(f"Scheduler flag did not become {'ON' if enabled else 'OFF'}")
 
 
 def verify_schedule(device_sn, expected, attempts=VERIFY_ATTEMPTS, wait=VERIFY_WAIT_SECONDS):
@@ -436,7 +510,18 @@ def verify_schedule(device_sn, expected, attempts=VERIFY_ATTEMPTS, wait=VERIFY_W
 
 
 def write_schedule(device_sn, groups):
-    response = foxess_post(WRITE_PATH, {"deviceSN": device_sn, "groups": groups})
+    payload = []
+    for group in outbound_groups(groups):
+        payload.append({
+            "enable": 1,
+            "startHour": int(group["startHour"]),
+            "startMinute": int(group["startMinute"]),
+            "endHour": int(group["endHour"]),
+            "endMinute": int(group["endMinute"]),
+            "workMode": group["workMode"],
+            "extraParam": deepcopy(group.get("extraParam") or {}),
+        })
+    response = foxess_post(WRITE_PATH, {"deviceSN": device_sn, "groups": payload})
     if not response or response.get("errno") != 0:
         raise RuntimeError(f"Scheduler write failed: {response}")
 
@@ -453,27 +538,28 @@ def apply_schedule(device_sn, current_payload, existing, desired, now):
         return "written and verified", path
     except Exception as original_error:
         try:
-            write_schedule(device_sn, existing_payload)
-            verify_schedule(device_sn, existing_payload)
-        except Exception as rollback_error:
+            # A second schedule write could append yet another card on faulty
+            # firmware.  Fail closed by switching the scheduler off instead.
+            set_scheduler_flag(device_sn, False)
+        except Exception as flag_error:
             raise RuntimeError(
-                f"Schedule change failed and rollback failed: {original_error}; "
-                f"rollback={rollback_error}; backup={path}"
-            ) from rollback_error
+                f"Schedule replacement failed and scheduler could not be "
+                f"disabled: {original_error}; flag={flag_error}; backup={path}"
+            ) from flag_error
         raise RuntimeError(
-            f"Schedule change failed; original schedule restored: {original_error}; backup={path}"
+            f"Schedule replacement failed; scheduler disabled: "
+            f"{original_error}; backup={path}"
         ) from original_error
 
 
 def disable_scope(scope, now=None):
-    """Immediately remove one or all owned periods and verify FoxESS readback."""
+    """Immediately stop scheduler execution without deleting stored periods."""
     if scope not in {"master", "charge", "export"}:
         raise ValueError(f"Unknown control scope: {scope}")
     now = now or datetime.now(TZ)
     device_sn = validate_device(get_device())
-    current, existing = read_schedule(device_sn)
-    desired = [deepcopy(group) for group in existing if not scope_managed(group, scope)]
-    return apply_schedule(device_sn, current, existing, desired, now)
+    set_scheduler_flag(device_sn, False)
+    return "scheduler disabled; reusable periods retained", None
 
 
 def validate_device(device):
@@ -486,11 +572,11 @@ def validate_device(device):
     return device_sn
 
 
-def schedule_notification(phase, plan, soc, outcome, groups, now):
+def schedule_notification(phase, plan, soc, outcome, groups, now, running=True):
     """Describe the verified FoxESS result in customer-facing terms."""
     if phase == "charge":
         active = next((g for g in groups if scope_managed(g, "charge")), None)
-        if active:
+        if active and running:
             target = float(active.get("extraParam", {}).get("fdSoc", MIN_SOC))
             headline = "IMPORT SCHEDULER SET AND VERIFIED"
             decision = (
@@ -503,7 +589,7 @@ def schedule_notification(phase, plan, soc, outcome, groups, now):
             decision = "No FoxESS import period is active for today."
     elif phase == "export":
         active = next((g for g in groups if scope_managed(g, "export")), None)
-        if active:
+        if active and running:
             cutoff = float(active.get("extraParam", {}).get("fdSoc", MIN_SOC))
             headline = "EXPORT SCHEDULER SET AND VERIFIED"
             decision = (
@@ -515,8 +601,8 @@ def schedule_notification(phase, plan, soc, outcome, groups, now):
             headline = "EXPORT SCHEDULER NOT REQUIRED"
             decision = "No FoxESS export period is active for today."
     else:
-        headline = "DAILY SCHEDULE CLEANUP VERIFIED"
-        decision = "Managed import and export periods were removed after use."
+        headline = "MODE SCHEDULER STOPPED AND VERIFIED"
+        decision = "Stored import and export periods were retained for reuse."
 
     return (
         f"⚡ Smart Electricity - {headline}\n\n"
@@ -557,7 +643,18 @@ def main():
     current, existing = read_schedule(device_sn)
     switches = get_switches(DB)
     enabled = args.ignore_switches or phase_enabled(switches, args.phase)
-    groups = desired_groups(existing, plan, args.phase, soc, enabled=enabled)
+    if args.phase == "watchdog":
+        groups = outbound_groups(existing)
+    else:
+        groups = desired_groups(existing, plan, args.phase, soc, enabled=enabled)
+    phase_group = None if args.phase == "watchdog" else next(
+        (group for group in groups if scope_managed(group, args.phase)), None
+    )
+    should_run = bool(
+        enabled
+        and phase_group is not None
+        and phase_action_required(plan, args.phase, soc)
+    )
     print(json.dumps({
         "phase": args.phase,
         "live_soc": soc,
@@ -567,6 +664,7 @@ def main():
         "export_kwh": None if plan is None else plan["export_kwh"],
         "managed_groups": [group for group in groups if managed(group)],
         "changed": group_signature(existing) != group_signature(groups),
+        "scheduler_should_run": should_run,
         "switches": switches,
         "phase_enabled": enabled,
     }, indent=2))
@@ -574,13 +672,20 @@ def main():
         print("DRY RUN: no FoxESS write")
         return
 
-    outcome, path = apply_schedule(device_sn, current, existing, groups, now)
+    if args.phase == "watchdog" or not should_run:
+        set_scheduler_flag(device_sn, False)
+        outcome, path = "scheduler disabled; reusable periods retained", None
+    else:
+        outcome, path = apply_schedule(device_sn, current, existing, groups, now)
+        set_scheduler_flag(device_sn, True)
     detail = (
         f"FoxESS {args.phase} schedule {outcome}; live SOC={soc:.1f}%; "
         f"backup={path or 'not needed'}"
     )
     record_event(now, args.phase, "VERIFIED", detail, plan)
-    notify(schedule_notification(args.phase, plan, soc, outcome, groups, now))
+    notify(schedule_notification(
+        args.phase, plan, soc, outcome, groups, now, running=should_run
+    ))
     print(f"SUCCESS: {detail}")
 
 

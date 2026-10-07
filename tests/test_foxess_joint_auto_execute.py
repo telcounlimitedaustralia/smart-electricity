@@ -49,7 +49,7 @@ class JointControllerTests(unittest.TestCase):
     def setUp(self):
         self.unmanaged = group(1, 2)
         self.legacy = group(17, 21, "ForceDischarge", 20.0)
-        self.existing = [self.unmanaged, self.legacy]
+        self.existing = [self.unmanaged]
 
     def test_charge_phase_preserves_unmanaged_and_owns_only_charge_window(self):
         desired = controller.desired_groups(self.existing, plan(), "charge", 40.0)
@@ -119,11 +119,39 @@ class JointControllerTests(unittest.TestCase):
         self.assertEqual(charge["extraParam"]["maxSoc"], 45.6)
         self.assertEqual(charge["extraParam"]["fdSoc"], 45.6)
 
+    def test_charge_update_preserves_canonical_export_period(self):
+        export = group(17, 20, "ForceDischarge", 45.0)
+        export["startMinute"] = 5
+        export["endMinute"] = 55
+        desired = controller.desired_groups(
+            [self.unmanaged, export], plan(), "charge", 40.0
+        )
+
+        self.assertEqual(
+            len([item for item in desired if controller.scope_managed(item, "charge")]),
+            1,
+        )
+        self.assertEqual(
+            len([item for item in desired if controller.scope_managed(item, "export")]),
+            1,
+        )
+
     def test_charge_is_not_armed_when_optimizer_requests_no_import(self):
         desired = controller.desired_groups(
             self.existing, plan(charge_kwh=0.0), "charge", 82.0
         )
         self.assertFalse(any(controller.managed(item) for item in desired))
+
+    def test_no_import_retains_existing_period_but_does_not_request_run(self):
+        charge = group(10, 13, "ForceCharge", 62.0)
+        charge["startMinute"] = 5
+        charge["endMinute"] = 55
+        no_import = plan(charge_kwh=0.0)
+
+        desired = controller.desired_groups([charge], no_import, "charge", 82.0)
+
+        self.assertEqual(len(desired), 1)
+        self.assertFalse(controller.phase_action_required(no_import, "charge", 82.0))
 
     def test_disabled_phase_removes_all_owned_periods(self):
         desired = controller.desired_groups(
@@ -196,14 +224,21 @@ class JointControllerTests(unittest.TestCase):
         desired = controller.desired_groups(self.existing, protected, "export", 65.0)
         self.assertFalse(any(controller.managed(item) for item in desired))
 
-    def test_watchdog_removes_both_current_and_legacy_owned_periods(self):
-        legacy_1705 = group(17, 22, "ForceDischarge", 20.0)
-        legacy_1705["startMinute"] = 5
-        legacy_1705["endMinute"] = 55
-        desired = controller.desired_groups(
-            [self.unmanaged, self.legacy, legacy_1705], None, "watchdog", 50.0
-        )
-        self.assertEqual(desired, [self.unmanaged])
+    def test_duplicate_overlapping_periods_are_rejected_before_write(self):
+        duplicate = group(17, 20, "ForceDischarge", 45.0)
+        duplicate["startMinute"] = 5
+        duplicate["endMinute"] = 55
+        with self.assertRaisesRegex(RuntimeError, "Duplicate/overlapping"):
+            controller.desired_groups(
+                [self.legacy, duplicate], plan(), "export", 90.0
+            )
+
+    def test_conflicting_mode_in_window_is_rejected_before_write(self):
+        conflict = group(10, 13, "SelfUse", 10.0)
+        conflict["startMinute"] = 5
+        conflict["endMinute"] = 55
+        with self.assertRaisesRegex(RuntimeError, "Conflicting"):
+            controller.desired_groups([conflict], plan(), "charge", 40.0)
 
     def test_scheduler_uses_sydney_daylight_saving_time(self):
         summer = datetime(2026, 10, 4, 10, 5, tzinfo=controller.TZ)
@@ -346,48 +381,37 @@ class JointControllerTests(unittest.TestCase):
             self.assertEqual(selected["created_at"], now.isoformat())
             self.assertEqual(selected["charge_kwh"], 19.0)
 
-    def test_failed_verification_restores_original_schedule(self):
+    def test_failed_verification_disables_scheduler_without_second_write(self):
         desired = controller.desired_groups(self.existing, plan(), "charge", 40.0)
         now = datetime(2026, 10, 4, 9, 55, tzinfo=controller.TZ)
         with patch.object(controller, "backup", return_value="backup.json"), patch.object(
             controller, "write_schedule"
         ) as write, patch.object(
-            controller, "verify_schedule", side_effect=[RuntimeError("mismatch"), self.existing]
-        ) as verify:
-            with self.assertRaisesRegex(RuntimeError, "original schedule restored"):
+            controller, "verify_schedule", side_effect=RuntimeError("mismatch")
+        ) as verify, patch.object(controller, "set_scheduler_flag") as flag:
+            with self.assertRaisesRegex(RuntimeError, "scheduler disabled"):
                 controller.apply_schedule("device", {"result": {}}, self.existing, desired, now)
 
-        self.assertEqual(write.call_count, 2)
+        self.assertEqual(write.call_count, 1)
         self.assertEqual(write.call_args_list[0].args[1], desired)
-        self.assertEqual(
-            write.call_args_list[1].args[1],
-            controller.outbound_groups(self.existing),
-        )
-        self.assertEqual(verify.call_count, 2)
+        self.assertEqual(verify.call_count, 1)
+        flag.assert_called_once_with("device", False)
 
-    def test_cleanup_sends_empty_list_not_all_day_self_use(self):
-        fallback = group(0, 23, "SelfUse")
-        fallback["endMinute"] = 59
-        managed_period = group(17, 20, "ForceDischarge", 45.0)
-        managed_period["startMinute"] = 5
-        managed_period["endMinute"] = 55
+    def test_stop_disables_master_flag_and_retains_periods(self):
         now = datetime(2026, 10, 5, 21, 0, tzinfo=controller.TZ)
-
-        desired = controller.desired_groups(
-            [fallback, managed_period], None, "watchdog", 50.0
-        )
-        with patch.object(controller, "backup", return_value="backup.json"), patch.object(
+        with patch.object(controller, "get_device", return_value={
+            "deviceSN": "device", "status": 1,
+        }), patch.object(controller, "set_scheduler_flag") as flag, patch.object(
             controller, "write_schedule"
-        ) as write, patch.object(
-            controller, "verify_schedule", return_value=[]
-        ):
-            controller.apply_schedule(
-                "device", {"result": {}}, [fallback, managed_period], desired, now
-            )
+        ) as write:
+            outcome, backup_path = controller.disable_scope("master", now)
 
-        self.assertEqual(write.call_args.args[1], [])
+        flag.assert_called_once_with("device", False)
+        write.assert_not_called()
+        self.assertIn("retained", outcome)
+        self.assertIsNone(backup_path)
 
-    def test_disabled_scheduler_is_a_verified_empty_schedule(self):
+    def test_disabled_master_still_exposes_stored_period_inventory(self):
         response = {
             "errno": 0,
             "result": {
@@ -397,13 +421,22 @@ class JointControllerTests(unittest.TestCase):
         }
         with patch.object(controller, "foxess_post", return_value=response):
             payload, active = controller.read_schedule("device")
-            verified = controller.verify_schedule(
-                "device", [], attempts=1, wait=0
-            )
 
         self.assertEqual(payload, response)
-        self.assertEqual(active, [])
-        self.assertEqual(verified, [])
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0]["workMode"], "ForceCharge")
+
+    def test_v2_write_is_full_list_with_group_enable(self):
+        period = group(10, 13, "ForceCharge", 62.0)
+        with patch.object(controller, "foxess_post", return_value={
+            "errno": 0, "result": {},
+        }) as post:
+            controller.write_schedule("device", [period])
+
+        path, payload = post.call_args.args
+        self.assertEqual(path, "/op/v2/device/scheduler/enable")
+        self.assertEqual(payload["groups"][0]["enable"], 1)
+        self.assertNotIn("properties", payload["groups"][0])
 
     def test_schedule_verification_ignores_foxess_non_control_fields(self):
         expected = group(17, 21, "ForceDischarge", 45.0)
