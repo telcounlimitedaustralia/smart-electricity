@@ -20,6 +20,11 @@ git pull --ff-only origin "$BRANCH"
 export PYTHONPATH="$REPO_DIR/src"
 .venv/bin/python -m unittest discover -s tests -v
 
+# Disable future automatic decisions before touching the live FoxESS read path.
+# Scheduled phase jobs with their gate OFF are no-ops and will not disturb a
+# schedule the operator is running manually.
+.venv/bin/python src/control_switches.py --all-off
+
 mkdir -p logs data/foxess_schedule_backups backups
 timestamp="$(date +%Y%m%d_%H%M%S)"
 crontab -l > "backups/crontab-before-joint-${timestamp}.txt" 2>/dev/null || true
@@ -31,11 +36,6 @@ chmod 600 "backups/env-before-joint-${timestamp}"
 .venv/bin/python src/economic_plan_snapshot.py
 .venv/bin/python src/foxess_joint_auto_execute.py --phase charge --dry-run --ignore-switches --use-latest-frozen-plan
 .venv/bin/python src/foxess_joint_auto_execute.py --phase export --dry-run --ignore-switches --use-latest-frozen-plan
-# A deployment must never make the first unobserved control write. Leave all
-# gates OFF; enable them from the dashboard only after comparing the V2
-# inventory dry-runs above with the FoxESS app.
-.venv/bin/python src/control_switches.py --all-off
-
 if grep -q '^FOXESS_CONTROL_MODE=' .env; then
   sed -i.bak 's/^FOXESS_CONTROL_MODE=.*/FOXESS_CONTROL_MODE=joint/' .env
 else

@@ -672,9 +672,17 @@ def main():
         print("DRY RUN: no FoxESS write")
         return
 
-    if args.phase == "watchdog" or not should_run:
+    if args.phase == "watchdog":
         set_scheduler_flag(device_sn, False)
         outcome, path = "scheduler disabled; reusable periods retained", None
+    elif not enabled:
+        # A scheduled job with its operator gate OFF must not touch a manual
+        # FoxESS schedule.  The dashboard OFF action already performs the
+        # immediate stop when the operator requests it.
+        outcome, path = "skipped; operator switch is OFF", None
+    elif not should_run:
+        set_scheduler_flag(device_sn, False)
+        outcome, path = "scheduler disabled; no action required", None
     else:
         outcome, path = apply_schedule(device_sn, current, existing, groups, now)
         set_scheduler_flag(device_sn, True)
