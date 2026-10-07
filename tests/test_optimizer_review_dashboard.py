@@ -131,6 +131,8 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn("Forecast versus actual", body)
         self.assertIn("Today’s energy journey", body)
         self.assertIn('id="dayActivity"', body)
+        self.assertIn('class="day-source ${source.toLowerCase()}"', body)
+        self.assertIn("BATTERY_KWH", body)
         self.assertIn("Total solar forecast", body)
         self.assertIn("Home use until recharge", body)
         self.assertIn('class="dashboard-section"', body)
