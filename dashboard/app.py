@@ -147,7 +147,24 @@ def index():
 @app.route("/optimizer-review")
 def optimizer_review():
     """Separate operator-focused view; the existing dashboard is unchanged."""
-    return render_template("optimizer_review.html")
+    return render_template(
+        "optimizer_review.html",
+        page_title="My Battery Plan",
+        show_main_dashboard_link=True,
+        api_prefix="/api",
+    )
+
+
+@app.route("/wattsiq")
+@app.route("/wattsiq/")
+def wattsiq():
+    """Public read-only battery plan with no link to the operator dashboard."""
+    return render_template(
+        "optimizer_review.html",
+        page_title="WattsIQ",
+        show_main_dashboard_link=False,
+        api_prefix="/wattsiq/api",
+    )
 
 
 @app.route("/api/optimizer-audit")
@@ -1810,6 +1827,22 @@ def economic_optimizer():
             "control_enabled": False,
             "error": str(e)
         }), 500
+
+
+WATTSIQ_READ_ONLY_VIEWS = {
+    "optimizer-audit": "optimizer_audit",
+    "economic-optimizer": "economic_optimizer",
+    "ml-performance": "ml_performance",
+}
+
+
+@app.route("/wattsiq/api/<view_name>", methods=["GET"])
+def wattsiq_read_only_api(view_name):
+    """Expose only the three GET-only feeds required by WattsIQ."""
+    endpoint = WATTSIQ_READ_ONLY_VIEWS.get(view_name)
+    if endpoint is None:
+        return jsonify({"error": "Unknown read-only view"}), 404
+    return app.view_functions[endpoint]()
 
 
 if __name__ == "__main__":

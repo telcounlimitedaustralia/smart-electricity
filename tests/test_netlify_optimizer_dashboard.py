@@ -18,6 +18,8 @@ class NetlifyOptimizerDashboardTests(unittest.TestCase):
         self.assertIn('id="weekPlanDisclosure"', readonly)
         self.assertNotIn(">Main dashboard</a>", readonly)
         self.assertIn("/.netlify/functions/live-data?view=", readonly)
+        self.assertNotIn("{{ page_title", readonly)
+        self.assertNotIn("{% if show_main_dashboard_link", readonly)
         self.assertGreater(len(readonly), len(dashboard) - 200)
 
     def test_proxy_allows_optimizer_audit_read(self):

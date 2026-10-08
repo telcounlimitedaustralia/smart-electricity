@@ -177,6 +177,26 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn("lower is better", body)
         self.assertNotIn("Morning battery", body)
 
+    def test_wattsiq_is_public_copy_without_operator_navigation(self):
+        response = self.client.get("/wattsiq")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("<title>WattsIQ</title>", body)
+        self.assertIn("<h1>WattsIQ</h1>", body)
+        self.assertNotIn(">Main dashboard</a>", body)
+        self.assertIn('const API_PREFIX="/wattsiq/api";', body)
+
+    def test_wattsiq_api_is_get_only_and_allowlisted(self):
+        with patch.object(dashboard_app, "DB", self.db_path), patch.object(
+            dashboard_app, "get_switches", return_value=dict(SWITCHES)
+        ):
+            allowed = self.client.get("/wattsiq/api/optimizer-audit")
+
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(self.client.get("/wattsiq/api/control-switch").status_code, 404)
+        self.assertEqual(self.client.post("/wattsiq/api/optimizer-audit").status_code, 405)
+
     def test_audit_api_returns_frozen_plan_live_state_and_execution(self):
         with patch.object(dashboard_app, "DB", self.db_path), patch.object(
             dashboard_app, "get_switches", return_value=dict(SWITCHES)

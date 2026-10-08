@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>My Battery Plan</title>
+  <title>{{ page_title|default("My Battery Plan", true) }}</title>
   <style>
     :root{
       --ink:#162238;--muted:#63728a;--line:#cad7e5;--panel:#fff;--soft:#f1f5fa;
@@ -35,8 +35,8 @@
 <body>
   <header class="topbar">
     <div class="toprow">
-      <div class="brand"><div class="mark">⚡</div><div><h1>My Battery Plan</h1><p class="subtitle">What the system will do, why it makes sense, and how well it is learning.</p></div></div>
-      <div class="actions"><span class="status-pill" id="controlPill">Loading…</span><button class="button" id="refreshButton" type="button">Refresh</button><a class="top-link" href="/">Main dashboard</a></div>
+      <div class="brand"><div class="mark">⚡</div><div><h1>{{ page_title|default("My Battery Plan", true) }}</h1><p class="subtitle">What the system will do, why it makes sense, and how well it is learning.</p></div></div>
+      <div class="actions"><span class="status-pill" id="controlPill">Loading…</span><button class="button" id="refreshButton" type="button">Refresh</button>{% if show_main_dashboard_link|default(true) %}<a class="top-link" href="/">Main dashboard</a>{% endif %}</div>
     </div>
   </header>
 
@@ -153,6 +153,7 @@
 
   <script>
     const $=id=>document.getElementById(id);
+    const API_PREFIX={{ api_prefix|default("/api", true)|tojson }};
     const BATTERY_KWH=42;
     const esc=value=>String(value??"—").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
     const num=(value,digits=1)=>value==null||Number.isNaN(Number(value))?"—":Number(value).toFixed(digits);
@@ -309,7 +310,7 @@
 
     function renderChart(rows,key){const cfg=metricConfig[key];$("chartMetricLabel").textContent=`${cfg.label} · ${cfg.unit}`;const usable=rows.filter(row=>row[cfg.forecast]!=null&&row[cfg.actual]!=null).slice(-8),target=$("performanceChart");if(!usable.length){target.innerHTML='<div class="empty">No comparable forecast and actual values for this measure yet.</div>';target.setAttribute("aria-label",`${cfg.label} forecast versus actual values are unavailable`);return;}const max=Math.max(...usable.flatMap(row=>[Number(row[cfg.forecast]),Number(row[cfg.actual])]),.01);target.setAttribute("aria-label",`${cfg.label} forecast versus actual for the latest ${usable.length} comparable days`);target.innerHTML=usable.map(row=>{const f=Number(row[cfg.forecast]),a=Number(row[cfg.actual]),isMoney=cfg.unit==="$",main=value=>isMoney?money(value):`${Math.round(value/BATTERY_KWH*100)}%`,sub=value=>isMoney?"":`${num(value)} kWh`,titleValue=value=>isMoney?money(value):`${Math.round(value/BATTERY_KWH*100)}% · ${num(value)} kWh`;return`<div class="bar-group" title="${esc(shortDate(row.date))}: forecast ${titleValue(f)}, actual ${titleValue(a)}"><div class="bar-values"><span class="bar-reading"><b>${main(f)}</b><small>${sub(f)}</small></span><span class="bar-reading"><b>${main(a)}</b><small>${sub(a)}</small></span></div><div class="bars"><i class="bar forecast" style="height:${Math.max(2,f/max*100)}%"></i><i class="bar actual" style="height:${Math.max(2,a/max*100)}%"></i></div><div class="bar-date">${esc(shortDate(row.date).replace(/^[^,]+,\s*/,""))}</div></div>`;}).join("");}
 
-    async function refresh(){const generation=++refreshGeneration;$("refreshButton").disabled=true;$("pageError").classList.add("hidden");let audit;try{audit=await get("/api/optimizer-audit",15000);}catch(error){if(generation!==refreshGeneration)return;$("refreshButton").disabled=false;$("controlPill").textContent="Control data unavailable";$("controlPill").className="status-pill bad";$("pageError").textContent=error.message||"Today’s plan is unavailable.";$("pageError").classList.remove("hidden");return;}if(generation!==refreshGeneration)return;renderAudit(audit);renderPerformance({available:false,reason:"Loading recent results…"});const results=await Promise.allSettled([get("/api/economic-optimizer",60000),get("/api/ml-performance",20000)]);if(generation!==refreshGeneration)return;const preview=results[0].status==="fulfilled"?results[0].value:{available:false,days:[]},performance=results[1].status==="fulfilled"?results[1].value:{available:false,reason:"Recent results are temporarily unavailable"};renderPreview(audit,preview);renderPerformance(performance);const failures=[];if(results[0].status==="rejected")failures.push(`Latest forecast: ${results[0].reason.message}`);if(results[1].status==="rejected")failures.push(`Learning results: ${results[1].reason.message}`);if(failures.length){$("pageError").textContent=`Today’s confirmed plan loaded. ${failures.join(" | ")}`;$("pageError").classList.remove("hidden");}$("refreshButton").disabled=false;}
+    async function refresh(){const generation=++refreshGeneration;$("refreshButton").disabled=true;$("pageError").classList.add("hidden");let audit;try{audit=await get(`${API_PREFIX}/optimizer-audit`,15000);}catch(error){if(generation!==refreshGeneration)return;$("refreshButton").disabled=false;$("controlPill").textContent="Control data unavailable";$("controlPill").className="status-pill bad";$("pageError").textContent=error.message||"Today’s plan is unavailable.";$("pageError").classList.remove("hidden");return;}if(generation!==refreshGeneration)return;renderAudit(audit);renderPerformance({available:false,reason:"Loading recent results…"});const results=await Promise.allSettled([get(`${API_PREFIX}/economic-optimizer`,60000),get(`${API_PREFIX}/ml-performance`,20000)]);if(generation!==refreshGeneration)return;const preview=results[0].status==="fulfilled"?results[0].value:{available:false,days:[]},performance=results[1].status==="fulfilled"?results[1].value:{available:false,reason:"Recent results are temporarily unavailable"};renderPreview(audit,preview);renderPerformance(performance);const failures=[];if(results[0].status==="rejected")failures.push(`Latest forecast: ${results[0].reason.message}`);if(results[1].status==="rejected")failures.push(`Learning results: ${results[1].reason.message}`);if(failures.length){$("pageError").textContent=`Today’s confirmed plan loaded. ${failures.join(" | ")}`;$("pageError").classList.remove("hidden");}$("refreshButton").disabled=false;}
     $("refreshButton").addEventListener("click",refresh);refresh();setInterval(refresh,60000);
   </script>
 </body>
