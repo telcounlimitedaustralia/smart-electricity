@@ -32,6 +32,9 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         ).replace(
             hour=6, minute=30, second=0, microsecond=0
         ).isoformat(timespec="seconds")
+        self.weather_date = datetime.now(
+            ZoneInfo("Australia/Sydney")
+        ).date().isoformat()
         self._create_fixture_database()
         dashboard_app.app.config.update(TESTING=True)
         self.client = dashboard_app.app.test_client()
@@ -130,8 +133,15 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         conn.execute(
             "INSERT INTO weather VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                "2026-10-05T10:00:00+11:00", 19.0, 18.0, 82.0, 0.6,
+                f"{self.weather_date}T10:00:00+11:00", 19.0, 18.0, 82.0, 0.6,
                 8.0, 240.0, 80.0, 160.0, 900.0, "test",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO weather VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                f"{self.weather_date}T14:00:00+11:00", 28.6, 27.4, 8.0, 0.0,
+                12.0, 935.0, 700.0, 235.0, 3600.0, "test",
             ),
         )
         conn.commit()
@@ -155,6 +165,11 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn('id="solarRemainingValue"', body)
         self.assertIn('id="homeUseForecastValue"', body)
         self.assertIn('id="weatherArt"', body)
+        self.assertIn('id="weatherTemperature"', body)
+        self.assertIn('id="weatherCloud"', body)
+        self.assertIn('id="weatherRain"', body)
+        self.assertIn('id="weatherRadiation"', body)
+        self.assertIn("renderWeatherSummary(audit.weather_summary)", body)
         self.assertIn("renderWeather(audit.weather)", body)
         self.assertIn("gross solar", body)
         self.assertIn("After hourly home use by 5 PM", body)
@@ -250,8 +265,13 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
             "FULL_DAY_PROTECTED_FORECAST",
         )
         self.assertEqual(data["live"]["battery_soc"], 35.0)
-        self.assertEqual(data["weather"]["cloud_cover"], 82.0)
-        self.assertEqual(data["weather"]["precipitation"], 0.6)
+        self.assertIn(data["weather"]["cloud_cover"], (82.0, 8.0))
+        self.assertIn(data["weather"]["precipitation"], (0.6, 0.0))
+        self.assertEqual(data["weather_summary"]["temperature_min"], 19.0)
+        self.assertEqual(data["weather_summary"]["temperature_max"], 28.6)
+        self.assertEqual(data["weather_summary"]["cloud_cover_daylight"], 45.0)
+        self.assertEqual(data["weather_summary"]["rain_total"], 0.6)
+        self.assertEqual(data["weather_summary"]["peak_radiation"], 935.0)
         self.assertEqual(
             data["live"]["solar_start_timestamp"],
             self.solar_start_timestamp,

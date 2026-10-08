@@ -396,6 +396,7 @@ def optimizer_audit():
             live["day_milestones"] = milestones
 
     weather = None
+    weather_summary = None
     if table_exists("weather"):
         row = conn.execute("""
             SELECT timestamp, temperature, apparent_temperature,
@@ -408,6 +409,19 @@ def optimizer_audit():
             LIMIT 1
         """, (now.strftime("%Y-%m-%dT%H:%M"),)).fetchone()
         weather = dict(row) if row else None
+        row = conn.execute("""
+            SELECT
+                MIN(temperature) AS temperature_min,
+                MAX(temperature) AS temperature_max,
+                AVG(CASE WHEN shortwave_radiation > 0 THEN cloud_cover END)
+                    AS cloud_cover_daylight,
+                SUM(COALESCE(precipitation, 0)) AS rain_total,
+                MAX(shortwave_radiation) AS peak_radiation
+            FROM weather
+            WHERE substr(timestamp, 1, 10) = ?
+        """, (today,)).fetchone()
+        if row and row["temperature_min"] is not None:
+            weather_summary = dict(row)
     conn.close()
 
     switches = get_switches(DB)
@@ -424,6 +438,7 @@ def optimizer_audit():
         "frozen": frozen,
         "live": live,
         "weather": weather,
+        "weather_summary": weather_summary,
         "control": {
             "mode": control_mode,
             "switches": switches,
