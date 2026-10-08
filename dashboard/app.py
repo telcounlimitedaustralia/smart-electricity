@@ -35,7 +35,9 @@ from economic_optimizer_v2 import (
     solar_only_5pm_energy,
     BATTERY_KWH as ECONOMIC_BATTERY_KWH,
     CHARGE_EFF as ECONOMIC_CHARGE_EFF,
+    CONTROL_WINDOW_HOURS as ECONOMIC_CONTROL_WINDOW_HOURS,
     DISCHARGE_EFF as ECONOMIC_DISCHARGE_EFF,
+    MAX_EXPORT_KW as ECONOMIC_MAX_EXPORT_KW,
     DEGRADATION_COST_CENTS_PER_BATTERY_KWH,
     SOLAR_PROTECTION_FACTOR,
     TERMINAL_ENERGY_VALUE_CENTS_PER_KWH,
@@ -50,6 +52,55 @@ app = Flask(__name__)
 ECONOMIC_CACHE_SECONDS = 300
 economic_cache = {"created": 0.0, "payload": None}
 economic_cache_lock = Lock()
+
+
+def fixed_60_comparison(pre_export_energy, optimiser_export_kwh, cutoff_soc):
+    """Compare one forecast premium sale with FoxESS stopping at 60% SOC."""
+    if pre_export_energy is None:
+        fixed_export_kwh = None
+    else:
+        fixed_export_kwh = min(
+            ECONOMIC_MAX_EXPORT_KW * ECONOMIC_CONTROL_WINDOW_HOURS,
+            max(
+                0.0,
+                float(pre_export_energy) - ECONOMIC_BATTERY_KWH * 0.60,
+            ) * ECONOMIC_DISCHARGE_EFF,
+        )
+
+    optimiser_export_kwh = float(optimiser_export_kwh)
+    optimiser_revenue = optimiser_export_kwh * 0.28
+    fixed_revenue = (
+        None if fixed_export_kwh is None else fixed_export_kwh * 0.28
+    )
+    return {
+        "basis": "TODAY_FORECAST_SAME_5PM_BATTERY",
+        "fixed_cutoff_soc": 60.0,
+        "fixed_export_kwh": (
+            None if fixed_export_kwh is None else round(fixed_export_kwh, 2)
+        ),
+        "fixed_export_revenue": (
+            None if fixed_revenue is None else round(fixed_revenue, 2)
+        ),
+        "optimiser_cutoff_soc": (
+            None if cutoff_soc is None else round(float(cutoff_soc), 1)
+        ),
+        "optimiser_export_kwh": round(optimiser_export_kwh, 2),
+        "optimiser_export_revenue": round(optimiser_revenue, 2),
+        "extra_export_kwh": (
+            None
+            if fixed_export_kwh is None
+            else round(optimiser_export_kwh - fixed_export_kwh, 2)
+        ),
+        "extra_revenue": (
+            None
+            if fixed_revenue is None
+            else round(optimiser_revenue - fixed_revenue, 2)
+        ),
+        "note": (
+            "Projected forced export from the same forecast 5PM battery. "
+            "Natural solar export is excluded."
+        ),
+    }
 
 
 @app.route("/api/control-switches")
@@ -1542,6 +1593,12 @@ def economic_optimizer():
                     None
                     if preview_export_cutoff_soc is None
                     else round(preview_export_cutoff_soc, 1)
+                ),
+
+                "fixed_60_comparison": fixed_60_comparison(
+                    pre_export,
+                    premium_export_actual,
+                    preview_export_cutoff_soc,
                 ),
 
                 "expected_post_export_soc": (

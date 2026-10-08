@@ -78,6 +78,12 @@ def test_forecast_audit_compares_matching_premium_window(tmp_path):
     assert result["metrics"]["home_use"]["mae"] == 1.0
     assert result["metrics"]["grid_import"]["comparable_days"] == 0
     assert result["metrics"]["grid_import"]["mae"] is None
+    assert result["model"]["name"] == "Extra Trees"
+    assert result["model"]["trees"] == 600
+    assert result["model"]["version"] == "load_candidate_v2"
+    assert result["learning"]["daily_results_check"] is True
+    assert result["learning"]["automatic_daily_retraining"] is False
+    assert result["learning"]["holdout_days"] == 28
 
 
 def test_incomplete_premium_window_is_not_treated_as_zero(tmp_path):

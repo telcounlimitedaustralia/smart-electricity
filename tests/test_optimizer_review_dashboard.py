@@ -200,6 +200,15 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn('id="mlWinRing"', body)
         self.assertIn('id="loadErrorBar"', body)
         self.assertIn('id="solarErrorBar"', body)
+        self.assertIn("ML learning performance", body)
+        self.assertIn('id="learningConfidence"', body)
+        self.assertIn('id="learningError"', body)
+        self.assertIn('id="learningImprovement"', body)
+        self.assertIn("Extra Trees", body)
+        self.assertIn("not currently automatic every day", body)
+        self.assertIn("Today versus FoxESS fixed 60%", body)
+        self.assertIn('id="fixed60Outcome"', body)
+        self.assertIn("renderFixed60(day)", body)
         self.assertIn('aria-label="Forecast versus actual chart"', body)
         self.assertIn('aria-label="Forecast versus actual key results"', body)
         self.assertIn('class="compare-pct"', body)
@@ -213,6 +222,16 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertLess(body.index('id="performanceChart"'), body.index("Seven-day plan"))
         self.assertIn("lower is better", body)
         self.assertNotIn("Morning battery", body)
+
+    def test_fixed_60_comparison_uses_same_5pm_battery_and_efficiency(self):
+        result = dashboard_app.fixed_60_comparison(42.0, 19.0, 52.4)
+
+        self.assertEqual(result["fixed_cutoff_soc"], 60.0)
+        self.assertEqual(result["fixed_export_kwh"], 15.96)
+        self.assertEqual(result["fixed_export_revenue"], 4.47)
+        self.assertEqual(result["optimiser_export_revenue"], 5.32)
+        self.assertEqual(result["extra_export_kwh"], 3.04)
+        self.assertEqual(result["extra_revenue"], 0.85)
 
     def test_wattsiq_is_public_copy_without_operator_navigation(self):
         response = self.client.get("/wattsiq")

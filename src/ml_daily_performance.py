@@ -278,6 +278,31 @@ def calculate(db_path=None):
         ),
         "metrics": metrics,
         "daily": daily,
+        "model": {
+            "name": "Extra Trees",
+            "version": next(
+                (row["model"] for row in reversed(daily) if row["model"]),
+                "load_candidate_v2",
+            ),
+            "trees": 600,
+            "inputs": [
+                "time and day",
+                "temperature, cloud and rain",
+                "yesterday at the same hour",
+                "the same hour last week",
+                "recent daily home use",
+            ],
+        },
+        "learning": {
+            "daily_results_check": True,
+            "automatic_daily_retraining": False,
+            "holdout_days": 28,
+            "promotion_rule": (
+                "A refreshed model replaces the current one only when it is "
+                "more accurate on the latest 28-day test and passes the "
+                "underprediction safety checks."
+            ),
+        },
         "comparison_definition": (
             "Forecast error is forecast minus actual. Premium export and revenue "
             "compare only the same 5 PM-9 PM window; all-day actual totals are "
