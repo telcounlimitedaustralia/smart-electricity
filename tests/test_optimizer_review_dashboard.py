@@ -117,6 +117,23 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
             "VALUES (?, ?, ?, ?, ?, ?)",
             (self.solar_start_timestamp, 35.0, 0.4, 1.2, 0.8, 0.0),
         )
+        conn.execute("""
+            CREATE TABLE weather (
+                timestamp TEXT PRIMARY KEY, temperature REAL,
+                apparent_temperature REAL, cloud_cover REAL,
+                precipitation REAL, wind_speed REAL,
+                shortwave_radiation REAL, direct_radiation REAL,
+                diffuse_radiation REAL, sunshine_duration REAL,
+                source TEXT
+            )
+        """)
+        conn.execute(
+            "INSERT INTO weather VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "2026-10-05T10:00:00+11:00", 19.0, 18.0, 82.0, 0.6,
+                8.0, 240.0, 80.0, 160.0, 900.0, "test",
+            ),
+        )
         conn.commit()
         conn.close()
 
@@ -132,10 +149,15 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn("Today’s energy journey", body)
         self.assertIn('id="dayActivity"', body)
         self.assertIn('class="day-source ${source.toLowerCase()}"', body)
-        self.assertIn('aria-label="Today’s solar outlook"', body)
+        self.assertIn('aria-label="Today’s solar and weather outlook"', body)
         self.assertIn('id="solarForecastValue"', body)
         self.assertIn('id="solarActualValue"', body)
         self.assertIn('id="solarRemainingValue"', body)
+        self.assertIn('id="homeUseForecastValue"', body)
+        self.assertIn('id="weatherArt"', body)
+        self.assertIn("renderWeather(audit.weather)", body)
+        self.assertIn("gross solar", body)
+        self.assertIn("After hourly home use by 5 PM", body)
         self.assertNotIn('class="action-grid"', body)
         self.assertLess(body.index('class="hero"'), body.index('class="quick-status"'))
         self.assertIn("BATTERY_KWH", body)
@@ -228,6 +250,8 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
             "FULL_DAY_PROTECTED_FORECAST",
         )
         self.assertEqual(data["live"]["battery_soc"], 35.0)
+        self.assertEqual(data["weather"]["cloud_cover"], 82.0)
+        self.assertEqual(data["weather"]["precipitation"], 0.6)
         self.assertEqual(
             data["live"]["solar_start_timestamp"],
             self.solar_start_timestamp,

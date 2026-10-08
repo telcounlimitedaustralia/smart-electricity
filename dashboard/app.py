@@ -394,6 +394,20 @@ def optimizer_audit():
                 if milestone:
                     milestones[label] = dict(milestone)
             live["day_milestones"] = milestones
+
+    weather = None
+    if table_exists("weather"):
+        row = conn.execute("""
+            SELECT timestamp, temperature, apparent_temperature,
+                   cloud_cover, precipitation, shortwave_radiation,
+                   direct_radiation, diffuse_radiation
+            FROM weather
+            ORDER BY ABS(
+                strftime('%s', timestamp) - strftime('%s', ?)
+            )
+            LIMIT 1
+        """, (now.strftime("%Y-%m-%dT%H:%M"),)).fetchone()
+        weather = dict(row) if row else None
     conn.close()
 
     switches = get_switches(DB)
@@ -409,6 +423,7 @@ def optimizer_audit():
         "today": today,
         "frozen": frozen,
         "live": live,
+        "weather": weather,
         "control": {
             "mode": control_mode,
             "switches": switches,
