@@ -201,6 +201,8 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn('id="loadErrorBar"', body)
         self.assertIn('id="solarErrorBar"', body)
         self.assertIn("ML learning performance", body)
+        self.assertIn('<details class="comparison-disclosure" id="learningDisclosure">', body)
+        self.assertNotIn('<details class="comparison-disclosure" id="learningDisclosure" open>', body)
         self.assertIn('id="learningConfidence"', body)
         self.assertIn('id="learningError"', body)
         self.assertIn('id="learningImprovement"', body)

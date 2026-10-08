@@ -156,8 +156,9 @@
     </section>
 
     <section class="dashboard-section" id="learningDetails" aria-labelledby="learningHeading">
-      <div class="learning-summary"><h2 id="learningHeading">ML learning performance</h2><p>What the system has learned, how accurate it is, and how today compares with a fixed 60% FoxESS schedule.</p></div>
-      <div class="section-content">
+      <details class="comparison-disclosure" id="learningDisclosure">
+        <summary><span class="comparison-summary"><b id="learningHeading">ML learning performance</b><small>Accuracy, learning progress and the fixed 60% FoxESS comparison</small></span></summary>
+        <div class="section-content">
         <div class="learning-kpis" aria-label="Learning performance summary">
           <div class="learning-kpi"><span>Evidence level</span><b id="learningConfidence">—</b><small id="learningConfidenceNote">Waiting for completed days</small></div>
           <div class="learning-kpi"><span>Typical home-use miss</span><b id="learningError">—</b><small id="learningErrorNote">Lower is better</small></div>
@@ -191,7 +192,8 @@
           <div class="bar-chart" id="performanceChart" aria-label="Forecast versus actual chart"><div class="empty">Loading forecast comparisons…</div></div>
           <div class="legend"><span><i class="swatch forecast"></i>Forecast</span><span><i class="swatch actual"></i>Actual</span></div>
         </article>
-      </div>
+        </div>
+      </details>
     </section>
   </main>
 
