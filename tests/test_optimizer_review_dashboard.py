@@ -219,7 +219,8 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertNotIn("Net result</th>", body)
         self.assertIn('id="chartMetricLabel"', body)
         self.assertLess(body.index('id="batteryBridge"'), body.index('id="performanceChart"'))
-        self.assertLess(body.index('id="performanceChart"'), body.index("Seven-day plan"))
+        self.assertLess(body.index('id="learningHeading"'), body.index('id="performanceChart"'))
+        self.assertGreater(body.index('id="performanceChart"'), body.index("Seven-day plan"))
         self.assertIn("lower is better", body)
         self.assertNotIn("Morning battery", body)
 
