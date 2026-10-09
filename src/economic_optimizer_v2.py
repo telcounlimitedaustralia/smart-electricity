@@ -1116,6 +1116,10 @@ def score_strategy(
     return result["planning_value"], result
 
 
+class InfeasibleBaselineError(RuntimeError):
+    """Raised when the comparison plan cannot satisfy physical reserves."""
+
+
 def optimise_export_only_baseline(
     hours,
     start_energy,
@@ -1145,7 +1149,9 @@ def optimise_export_only_baseline(
     )
 
     if score is None:
-        raise RuntimeError("No-action strategy fails reserve constraints")
+        raise InfeasibleBaselineError(
+            "No-action strategy fails reserve constraints"
+        )
 
     export_options = candidate_values(
         MAX_EXPORT_KW * CONTROL_WINDOW_HOURS
@@ -1372,20 +1378,34 @@ def optimise_horizon(
         for day in days
     }
 
-    baseline_score, baseline_result, baseline_exports = (
-        optimise_export_only_baseline(
-            hours,
-            start_energy,
-            days,
-            baseline_pre10,
-            context,
+    baseline_type = "SAFE_EXPORT_ONLY"
+    try:
+        baseline_score, baseline_result, baseline_exports = (
+            optimise_export_only_baseline(
+                hours,
+                start_energy,
+                days,
+                baseline_pre10,
+                context,
+            )
         )
-    )
+    except InfeasibleBaselineError:
+        # A no-charge comparison can be physically unable to retain the
+        # terminal reserve when the battery starts unusually low.  That makes
+        # the comparison infeasible; it must not prevent the joint optimiser
+        # from finding the safe charging plan that is needed precisely in this
+        # situation.
+        baseline_score = float(no_action_result["planning_value"])
+        baseline_result = no_action_result
+        baseline_exports = dict(exports)
+        baseline_type = "NO_CHARGE_BASELINE_INFEASIBLE"
 
-    # Start the joint search from the realistic export-only strategy.  Joint
-    # candidates may add cheap charging and alter exports together.
+    # Start the joint search from the realistic export-only strategy whenever
+    # it is safe.  If no no-charge strategy can retain the reserve, establish
+    # a safe all-charge seed first and optimise down from it.  Starting from an
+    # unsafe score would either block every safe candidate or leave the final
+    # cash-polish step with no valid strategy.
     exports = dict(baseline_exports)
-    best_score = baseline_score
 
     charge_options = candidate_values(
         MAX_GRID_CHARGE_KW * CONTROL_WINDOW_HOURS
@@ -1394,6 +1414,53 @@ def optimise_horizon(
     export_options = candidate_values(
         MAX_EXPORT_KW * CONTROL_WINDOW_HOURS
     )
+
+    if result_is_safe(
+        baseline_result,
+        days,
+        baseline_pre10=baseline_pre10,
+    ):
+        best_score = baseline_score
+    else:
+        maximum_charge = charge_options[-1]
+        charges = {day: maximum_charge for day in days}
+        exports = {day: 0.0 for day in days}
+        best_score, seed_result = score_strategy(
+            hours,
+            start_energy,
+            days,
+            charges,
+            exports,
+            baseline_pre10=baseline_pre10,
+            context=context,
+        )
+        if best_score is None:
+            raise RuntimeError(
+                "No feasible joint strategy meets reserve constraints"
+            )
+
+        # The battery may fill before the full-window request is delivered.
+        # Store the amount the simulator can actually charge so the frozen plan
+        # and its command-line report do not overstate the requested import.
+        delivered_seed = {
+            day: round(
+                float(seed_result["daily"][day].get("grid_charge", 0.0)),
+                2,
+            )
+            for day in days
+        }
+        delivered_score, _ = score_strategy(
+            hours,
+            start_energy,
+            days,
+            delivered_seed,
+            exports,
+            baseline_pre10=baseline_pre10,
+            context=context,
+        )
+        if delivered_score is not None:
+            charges = delivered_seed
+            best_score = delivered_score
 
     for pass_number in range(
         1,
@@ -1552,7 +1619,7 @@ def optimise_horizon(
             baseline_exports,
 
         "baseline_type":
-            "SAFE_EXPORT_ONLY",
+            baseline_type,
 
         "search_method":
             "JOINT_DAILY_PAIRS_PLUS_ADJACENT_DAY_LOOKAHEAD_PLUS_SAFE_CASH_EXPORT",

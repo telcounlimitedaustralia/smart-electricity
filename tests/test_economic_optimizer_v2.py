@@ -250,6 +250,49 @@ class JointOptimisationTests(unittest.TestCase):
             )
         )
 
+    def test_infeasible_no_charge_baseline_still_builds_safe_charge_plan(self):
+        """A low morning battery must not make the comparison abort control."""
+        start = datetime(2026, 10, 10)
+        day = start.date().isoformat()
+        hours = [
+            {
+                "timestamp": (start + timedelta(hours=hour)).isoformat(),
+                "day": day,
+                "hour": hour,
+                "solar_kwh": 0.0,
+                "load_kwh": 0.5,
+            }
+            for hour in range(24)
+        ]
+
+        def import_rate(ts):
+            return (11.11 if 10 <= ts.hour < 14 else 42.0, "test")
+
+        def export_rate(ts):
+            return (28.0 if 17 <= ts.hour < 21 else 5.0, "test")
+
+        with patch.object(optimiser, "import_rate", side_effect=import_rate), patch.object(
+            optimiser, "export_rate", side_effect=export_rate
+        ):
+            result = optimiser.optimise_horizon(
+                hours,
+                optimiser.BATTERY_KWH * 0.27,
+                max_passes=1,
+            )
+
+        self.assertEqual(
+            result["baseline_type"],
+            "NO_CHARGE_BASELINE_INFEASIBLE",
+        )
+        self.assertGreater(result["charges"][day], 0.0)
+        self.assertTrue(
+            optimiser.result_is_safe(
+                result["final_result"],
+                [day],
+                baseline_pre10={day: 0.0},
+            )
+        )
+
     def test_oct3_low_solar_then_strong_oct4_values_charge_and_export_together(self):
         """Acceptance case: 18.04kWh solar then 49.54kWh next day."""
         days = [
