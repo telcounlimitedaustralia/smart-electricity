@@ -29,6 +29,12 @@ BATTERY_KWH = 42.0
 CHARGE_EFFICIENCY = 0.95
 DISCHARGE_EFFICIENCY = 0.95
 PLAN_MAX_AGE_MINUTES = 20
+PLAN_WAIT_SECONDS = 300
+PLAN_POLL_SECONDS = 5
+PLAN_SNAPSHOT_TIMES = {
+    "charge": (9, 45),
+    "export": (16, 45),
+}
 SOC_MAX_AGE_MINUTES = 10
 VERIFY_ATTEMPTS = 4
 VERIFY_WAIT_SECONDS = 12
@@ -147,6 +153,66 @@ def latest_plan(now, db_path=DB, use_latest_frozen=False):
     if age > PLAN_MAX_AGE_MINUTES:
         raise RuntimeError(f"Joint plan is stale: {age:.1f} minutes old")
     return plan
+
+
+def wait_for_fresh_plan(
+    phase,
+    db_path=DB,
+    timeout_seconds=PLAN_WAIT_SECONDS,
+    poll_seconds=PLAN_POLL_SECONDS,
+    now_fn=None,
+    sleep_fn=time.sleep,
+    monotonic_fn=time.monotonic,
+):
+    """Wait briefly when the scheduled optimiser snapshot is still running.
+
+    The 09:45 and 16:45 optimiser calculations can occasionally overlap the
+    corresponding 09:55 and 16:55 controller starts.  A stale plan at that
+    exact moment is not a reason to race ahead or fail immediately: wait for
+    the atomic snapshot insert, then apply only the newly validated plan.
+    """
+    if phase not in PLAN_SNAPSHOT_TIMES:
+        raise ValueError(f"No scheduled snapshot time for phase {phase!r}")
+    now_fn = now_fn or (lambda: datetime.now(TZ))
+    deadline = monotonic_fn() + max(0, timeout_seconds)
+    last_error = None
+    announced = False
+    while True:
+        now = now_fn()
+        try:
+            plan = latest_plan(now, db_path=db_path)
+            snapshot_hour, snapshot_minute = PLAN_SNAPSHOT_TIMES[phase]
+            scheduled_snapshot = now.replace(
+                hour=snapshot_hour,
+                minute=snapshot_minute,
+                second=0,
+                microsecond=0,
+            )
+            if parse_timestamp(plan["created_at"]) < scheduled_snapshot:
+                last_error = RuntimeError(
+                    f"Latest joint plan predates the scheduled "
+                    f"{scheduled_snapshot:%H:%M} {phase} snapshot"
+                )
+            else:
+                return now, plan
+        except RuntimeError as exc:
+            message = str(exc)
+            if "plan is stale" not in message and "No frozen joint plan" not in message:
+                raise
+            last_error = exc
+        remaining = deadline - monotonic_fn()
+        if remaining <= 0:
+            raise RuntimeError(
+                f"{last_error}; no fresh plan appeared within "
+                f"{timeout_seconds} seconds"
+            ) from last_error
+        if not announced:
+            print(
+                "WAITING: scheduled optimiser snapshot is still running; "
+                f"allowing up to {timeout_seconds} seconds for a fresh plan"
+            )
+            announced = True
+        sleep_fn(min(poll_seconds, remaining))
 
 
 def latest_soc(now, db_path=DB):
@@ -658,10 +724,12 @@ def main():
             "--use-latest-frozen-plan is permitted only with --dry-run"
         )
     now = datetime.now(TZ)
-    plan = None if args.phase == "watchdog" else latest_plan(
-        now,
-        use_latest_frozen=args.use_latest_frozen_plan,
-    )
+    if args.phase == "watchdog":
+        plan = None
+    elif args.use_latest_frozen_plan:
+        plan = latest_plan(now, use_latest_frozen=True)
+    else:
+        now, plan = wait_for_fresh_plan(args.phase)
     control_mode = os.getenv("FOXESS_CONTROL_MODE", "rule").strip().lower()
     if not args.dry_run and control_mode != "joint":
         raise RuntimeError(

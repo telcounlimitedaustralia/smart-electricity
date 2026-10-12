@@ -288,6 +288,120 @@ class JointControllerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "SOC is stale"):
                 controller.latest_soc(now, db_path)
 
+    def test_controller_waits_for_in_progress_snapshot_then_uses_fresh_plan(self):
+        now = datetime(2026, 10, 13, 9, 55, tzinfo=controller.TZ)
+        with tempfile.TemporaryDirectory() as folder:
+            db_path = os.path.join(folder, "energy.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute("""
+                CREATE TABLE economic_plan_actions (
+                    plan_date TEXT, created_at TEXT, charge_kwh REAL
+                )
+            """)
+            conn.execute(
+                "INSERT INTO economic_plan_actions VALUES (?, ?, ?)",
+                ("2026-10-13", (now - timedelta(minutes=21)).isoformat(), 30.0),
+            )
+            conn.commit()
+            conn.close()
+
+            waits = []
+
+            def finish_snapshot(_seconds):
+                waits.append(_seconds)
+                conn = sqlite3.connect(db_path)
+                conn.execute(
+                    "INSERT INTO economic_plan_actions VALUES (?, ?, ?)",
+                    ("2026-10-13", (now - timedelta(minutes=10)).isoformat(), 30.0),
+                )
+                conn.commit()
+                conn.close()
+
+            selected_at, selected = controller.wait_for_fresh_plan(
+                "charge",
+                db_path=db_path,
+                timeout_seconds=300,
+                poll_seconds=5,
+                now_fn=lambda: now,
+                sleep_fn=finish_snapshot,
+                monotonic_fn=lambda: 0,
+            )
+
+            self.assertEqual(waits, [5])
+            self.assertEqual(selected_at, now)
+            self.assertEqual(selected["charge_kwh"], 30.0)
+            self.assertEqual(
+                selected["created_at"],
+                (now - timedelta(minutes=10)).isoformat(),
+            )
+
+    def test_controller_reports_failure_when_fresh_plan_never_appears(self):
+        now = datetime(2026, 10, 13, 9, 55, tzinfo=controller.TZ)
+        with tempfile.TemporaryDirectory() as folder:
+            db_path = os.path.join(folder, "energy.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute("""
+                CREATE TABLE economic_plan_actions (
+                    plan_date TEXT, created_at TEXT, charge_kwh REAL
+                )
+            """)
+            conn.execute(
+                "INSERT INTO economic_plan_actions VALUES (?, ?, ?)",
+                ("2026-10-13", (now - timedelta(minutes=21)).isoformat(), 30.0),
+            )
+            conn.commit()
+            conn.close()
+
+            ticks = iter((0, 301))
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "no fresh plan appeared within 300 seconds",
+            ):
+                controller.wait_for_fresh_plan(
+                    "charge",
+                    db_path=db_path,
+                    timeout_seconds=300,
+                    now_fn=lambda: now,
+                    sleep_fn=lambda _seconds: None,
+                    monotonic_fn=lambda: next(ticks),
+                )
+
+    def test_controller_waits_for_scheduled_snapshot_even_when_preview_is_recent(self):
+        now = datetime(2026, 10, 13, 9, 55, tzinfo=controller.TZ)
+        with tempfile.TemporaryDirectory() as folder:
+            db_path = os.path.join(folder, "energy.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute("""
+                CREATE TABLE economic_plan_actions (
+                    plan_date TEXT, created_at TEXT, charge_kwh REAL
+                )
+            """)
+            conn.execute(
+                "INSERT INTO economic_plan_actions VALUES (?, ?, ?)",
+                ("2026-10-13", now.replace(hour=9, minute=44).isoformat(), 25.0),
+            )
+            conn.commit()
+            conn.close()
+
+            def finish_snapshot(_seconds):
+                conn = sqlite3.connect(db_path)
+                conn.execute(
+                    "INSERT INTO economic_plan_actions VALUES (?, ?, ?)",
+                    ("2026-10-13", now.replace(hour=9, minute=45).isoformat(), 30.0),
+                )
+                conn.commit()
+                conn.close()
+
+            _, selected = controller.wait_for_fresh_plan(
+                "charge",
+                db_path=db_path,
+                now_fn=lambda: now,
+                sleep_fn=finish_snapshot,
+                monotonic_fn=lambda: 0,
+            )
+
+            self.assertEqual(selected["charge_kwh"], 30.0)
+
     def test_control_refreshes_stale_soc_once_before_rejecting(self):
         now = datetime(2026, 10, 7, 16, 55, tzinfo=controller.TZ)
         with tempfile.TemporaryDirectory() as folder:
