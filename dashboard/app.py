@@ -368,6 +368,11 @@ def optimizer_audit():
                 created_local = created_local.astimezone(SYDNEY_TZ)
             frozen = {
                 "created_at": created_at,
+                "is_morning_charge_plan": (
+                    9 * 60 + 45
+                    <= created_local.hour * 60 + created_local.minute
+                    < 14 * 60
+                ),
                 "is_final_export_plan": (
                     created_local.date() == now.date()
                     and created_local.hour * 60 + created_local.minute >= 16 * 60 + 45

@@ -225,6 +225,9 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertGreater(body.index('id="performanceChart"'), body.index("Seven-day plan"))
         self.assertIn("lower is better", body)
         self.assertNotIn("Morning battery", body)
+        self.assertIn("Saved morning control plan", body)
+        self.assertIn("if(!finalPlan&&!morningPlan)", body)
+        self.assertIn("MORNING CONTROL PLAN", body)
 
     def test_fixed_60_comparison_uses_same_5pm_battery_and_efficiency(self):
         result = dashboard_app.fixed_60_comparison(42.0, 19.0, 52.4)
@@ -266,6 +269,7 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         data = response.get_json()
         self.assertTrue(data["available"])
         self.assertEqual(data["frozen"]["created_at"], "2026-10-05T09:45:00+11:00")
+        self.assertTrue(data["frozen"]["is_morning_charge_plan"])
         self.assertFalse(data["frozen"]["is_final_export_plan"])
         self.assertEqual(data["frozen"]["days"][0]["charge_kwh"], 14.0)
         self.assertEqual(data["frozen"]["days"][0]["export_kwh"], 21.0)

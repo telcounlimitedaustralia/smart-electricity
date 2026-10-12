@@ -288,9 +288,9 @@
       $("dayActivity").setAttribute("role","list");
     }
 
-    function renderDecision(day,{finalPlan=false,calculatedAt=null}={}){
+    function renderDecision(day,{finalPlan=false,morningPlan=false,calculatedAt=null}={}){
       const charge=chargeOf(day),sale=exportOf(day),start=day.starting_soc??day.battery_start_soc,solarOnly=day.solar_only_5pm_soc,atFive=day.expected_5pm_soc??day.soc_5pm,afterSale=day.expected_post_export_soc??day.export_cutoff_soc,end=day.expected_end_soc??day.end_soc;
-      $("todayHeading").textContent=finalPlan?"Final control plan for today":"Current ML and optimiser prediction";
+      $("todayHeading").textContent=finalPlan?"Final control plan for today":morningPlan?"Saved morning control plan":"Current ML and optimiser prediction";
       $("todayAnswer").innerHTML=answerText(day);
       $("expectedGain").textContent=money(day.daily_improvement??(Number(day.net_value||0)-Number(day.baseline_value||0)));
       $("solarDateValue").textContent=day.date?shortDate(day.date):"Today";
@@ -310,31 +310,31 @@
     function renderAudit(audit){
       const frozenDays=audit.frozen?.days||[];const today=frozenDays.find(day=>day.date===audit.today);const switches=audit.control?.switches||{};const enabled=audit.control?.mode==="joint"&&switches.master_enabled&&switches.charge_enabled&&switches.export_enabled;renderWeather(audit.weather);renderWeatherSummary(audit.weather_summary);
       $("controlPill").textContent=enabled?"Automatic control is on":"Automatic control needs attention";$("controlPill").className=`status-pill ${enabled?"good":"bad"}`;
-      const finalPlan=Boolean(audit.frozen?.is_final_export_plan);$("planChip").querySelector("span").textContent=audit.frozen?(finalPlan?`Final control plan frozen ${localTime(audit.frozen.created_at)}`:`Saved calculation ${localTime(audit.frozen.created_at)} · final export plan at 4:45 PM`):"No saved calculation";$("planChip").className=`chip ${audit.frozen?"":"bad"}`;
+      const finalPlan=Boolean(audit.frozen?.is_final_export_plan),morningPlan=Boolean(audit.frozen?.is_morning_charge_plan);$("planChip").querySelector("span").textContent=audit.frozen?(finalPlan?`Final control plan frozen ${localTime(audit.frozen.created_at)}`:morningPlan?`Morning control plan saved ${localTime(audit.frozen.created_at)}`:`Saved calculation ${localTime(audit.frozen.created_at)} · final export plan at 4:45 PM`):"No saved calculation";$("planChip").className=`chip ${audit.frozen?"":"bad"}`;
       $("batteryChip").querySelector("span").textContent=audit.live?.battery_soc==null?"Battery reading unavailable":`Battery now ${pct(audit.live.battery_soc)}`;$("batteryChip").className=`chip ${audit.live?.battery_soc==null?"warn":""}`;
       $("nextChip").querySelector("span").textContent=nextAction();
       if(!today){$("todayAnswer").textContent="No confirmed plan is available yet.";$("planBody").innerHTML='<tr><td colspan="7" class="empty">No confirmed plan is available.</td></tr>';return;}
-      renderDecision(today,{finalPlan,calculatedAt:audit.frozen.created_at});
+      renderDecision(today,{finalPlan,morningPlan,calculatedAt:audit.frozen.created_at});
       renderDayTimeline(today,audit.live||{},audit.events||[]);
-      /* The initial saved calculation is replaced by the live prediction below before 4:45 PM. */
-      renderPlanTable(frozenDays,[],audit.today,{finalPlan});
+      /* A scheduled morning decision remains authoritative until a later control snapshot replaces it. */
+      renderPlanTable(frozenDays,[],audit.today,{finalPlan,morningPlan});
     }
 
     function renderPreview(audit,preview){
-      const frozenDays=audit.frozen?.days||[];const today=frozenDays.find(day=>day.date===audit.today);const liveDays=preview?.days||[];const live=liveDays.find(day=>day.date===audit.today);const finalPlan=Boolean(audit.frozen?.is_final_export_plan);renderPlanTable(frozenDays,liveDays,audit.today,{finalPlan});
+      const frozenDays=audit.frozen?.days||[];const today=frozenDays.find(day=>day.date===audit.today);const liveDays=preview?.days||[];const live=liveDays.find(day=>day.date===audit.today);const finalPlan=Boolean(audit.frozen?.is_final_export_plan),morningPlan=Boolean(audit.frozen?.is_morning_charge_plan);renderPlanTable(frozenDays,liveDays,audit.today,{finalPlan,morningPlan});
       if(!today||!live){$("changeChip").querySelector("span").textContent="Latest forecast still loading";$("changeChip").className="chip warn";return;}
-      renderDayTimeline(finalPlan?today:live,audit.live||{},audit.events||[]);
-      if(!finalPlan){renderDecision(live,{finalPlan:false});$("planChip").querySelector("span").textContent="Current ML prediction shown · final export plan at 4:45 PM";$("weekDescription").textContent="Today shows the latest ML and optimiser prediction. The final export plan freezes at 4:45 PM and live SOC is checked at 4:55 PM.";}else{$("weekDescription").textContent="Today shows the final frozen control plan. Future days remain forecasts and will update before use.";}
+      renderDayTimeline(finalPlan||morningPlan?today:live,audit.live||{},audit.events||[]);
+      if(!finalPlan&&!morningPlan){renderDecision(live,{finalPlan:false});$("planChip").querySelector("span").textContent="Current ML prediction shown · final export plan at 4:45 PM";$("weekDescription").textContent="Today shows the latest ML and optimiser prediction. The final export plan freezes at 4:45 PM and live SOC is checked at 4:55 PM.";}else if(morningPlan){$("weekDescription").textContent="Today shows the saved morning control plan. Live ML forecasts continue updating future days; the final export plan freezes at 4:45 PM.";}else{$("weekDescription").textContent="Today shows the final frozen control plan. Future days remain forecasts and will update before use.";}
       const liveCharge=Number(live.actual_simulated_charge_kwh??live.recommended_charge_kwh??0),liveExport=Number(live.simulated_premium_export_kwh??live.recommended_export_kwh??0),dc=liveCharge-Number(today.charge_kwh||0),de=liveExport-Number(today.export_kwh||0),stable=Math.abs(dc)<.5&&Math.abs(de)<.5;
       $("changeChip").querySelector("span").textContent=stable?"No meaningful change since confirmation":"Latest forecast has changed";$("changeChip").className=`chip ${stable?"":"warn"}`;
     }
 
-    function renderPlanTable(frozenDays,liveDays,todayDate,{finalPlan=false}={}){
+    function renderPlanTable(frozenDays,liveDays,todayDate,{finalPlan=false,morningPlan=false}={}){
       const frozenByDate=new Map(frozenDays.map(day=>[day.date,day]));const liveByDate=new Map(liveDays.map(day=>[day.date,day]));const dates=[...new Set([...frozenDays.map(day=>day.date),...liveDays.map(day=>day.date)])].sort();if(!dates.length){$("planBody").innerHTML='<tr><td colspan="7" class="empty">The seven-day plan is not available yet.</td></tr>';return;}
       $("planBody").innerHTML=dates.map(date=>{
-        const active=date===todayDate,hasLive=liveByDate.has(date),useLive=active&&hasLive&&!finalPlan;
+        const active=date===todayDate,hasLive=liveByDate.has(date),useLive=active&&hasLive&&!finalPlan&&!morningPlan;
         const source=active?(useLive?liveByDate.get(date):(frozenByDate.get(date)||liveByDate.get(date))):(liveByDate.get(date)||frozenByDate.get(date));if(!source)return"";
-        const solar=solarTotalOf(source),actualSolar=source.actual_solar_so_far_kwh,remainingSolar=source.remaining_solar_kwh,solarOnlySoc=source.solar_only_5pm_soc,solarOnlyKwh=solarOnlyKwhOf(source),fills=Number(solarOnlySoc)>=99.5,charge=chargeOf(source),stored=storedImportOf(source),sale=exportOf(source),end=source.expected_end_soc??source.end_soc,atFive=source.expected_5pm_soc??source.soc_5pm,reserve=source.required_reserve_kwh,draw=source.forecast_draw_to_recharge_kwh,forecastLabel=hasLive?(source.confidence?`${source.confidence} forecast`:"Latest forecast"):"Saved snapshot",activeLabel=finalPlan?"FINAL CONTROL PLAN":useLive?"LATEST PREDICTION":"SAVED CALCULATION";
+        const solar=solarTotalOf(source),actualSolar=source.actual_solar_so_far_kwh,remainingSolar=source.remaining_solar_kwh,solarOnlySoc=source.solar_only_5pm_soc,solarOnlyKwh=solarOnlyKwhOf(source),fills=Number(solarOnlySoc)>=99.5,charge=chargeOf(source),stored=storedImportOf(source),sale=exportOf(source),end=source.expected_end_soc??source.end_soc,atFive=source.expected_5pm_soc??source.soc_5pm,reserve=source.required_reserve_kwh,draw=source.forecast_draw_to_recharge_kwh,forecastLabel=hasLive?(source.confidence?`${source.confidence} forecast`:"Latest forecast"):"Saved snapshot",activeLabel=finalPlan?"FINAL CONTROL PLAN":morningPlan?"MORNING CONTROL PLAN":useLive?"LATEST PREDICTION":"SAVED CALCULATION";
         const recharge=source.next_recharge_timestamp?`until ${nextRecharge(source.next_recharge_timestamp)}`:"until the next useful solar";
         return`<tr class="${active?"today-row":""}">
           <td><span class="cell-main">${active?"Today":esc(shortDate(date))}</span><span class="${active?"active-tag":"future-tag"}">${active?activeLabel:esc(forecastLabel.toUpperCase())}</span><span class="plan-detail">Starts at ${wholePct(source.starting_soc??source.battery_start_soc)} · ${oneKwh(startKwhOf(source))}</span></td>

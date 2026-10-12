@@ -138,6 +138,32 @@ class JointOptimisationTests(unittest.TestCase):
         self.assertAlmostEqual(day["grid_charge"], expected_import, places=3)
         self.assertAlmostEqual(day["pre_export_energy"], optimiser.BATTERY_KWH)
 
+    def test_partial_live_shoulder_window_delivers_requested_charge(self):
+        start = datetime(2026, 10, 13)
+        hours = [
+            {
+                "timestamp": (start + timedelta(hours=hour)).isoformat(),
+                "day": "2026-10-13",
+                "hour": hour,
+                "solar_kwh": 0.0,
+                "load_kwh": 0.0,
+            }
+            for hour in range(11, 24)
+        ]
+
+        result = optimiser.simulate(
+            hours,
+            start_energy=optimiser.MIN_KWH,
+            charges={"2026-10-13": 30.0},
+            exports={"2026-10-13": 0.0},
+        )
+
+        self.assertAlmostEqual(
+            result["daily"]["2026-10-13"]["grid_charge"],
+            30.0,
+            places=3,
+        )
+
     def test_hot_night_reserve_extends_to_next_10am_shoulder(self):
         first = datetime(2026, 10, 3)
         second = datetime(2026, 10, 4)

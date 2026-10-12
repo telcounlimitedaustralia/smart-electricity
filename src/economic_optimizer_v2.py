@@ -499,6 +499,24 @@ def simulate(
     exports = exports or {}
     context = context or build_simulation_context(hours)
 
+    # Live forecasts omit hours that have already started.  Spread a requested
+    # action across the control-window rows that are actually still present,
+    # otherwise a 30 kWh request viewed after 10 AM is simulated as only
+    # 22.5 kWh and is incorrectly rejected as undeliverable.
+    charge_window_slots = {}
+    export_window_slots = {}
+    for forecast_hour in hours:
+        forecast_day = forecast_hour["day"]
+        forecast_clock_hour = int(forecast_hour["hour"])
+        if SHOULDER_START <= forecast_clock_hour < SHOULDER_END:
+            charge_window_slots[forecast_day] = (
+                charge_window_slots.get(forecast_day, 0) + 1
+            )
+        if EXPORT_START <= forecast_clock_hour < EXPORT_END:
+            export_window_slots[forecast_day] = (
+                export_window_slots.get(forecast_day, 0) + 1
+            )
+
     energy = float(start_energy)
 
     import_cost = 0.0
@@ -752,14 +770,11 @@ def simulate(
             < SHOULDER_END
         ):
 
-            # Spread requested AC grid energy evenly
-            # across the four-hour shoulder window.
+            # Spread requested AC grid energy evenly across the forecast
+            # hours still available in the shoulder window.
             hourly_request = (
                 requested_charge
-                / (
-                    SHOULDER_END
-                    - SHOULDER_START
-                )
+                / max(1, charge_window_slots.get(day, 0))
             )
 
             # Respect inverter charging limit.
@@ -853,14 +868,11 @@ def simulate(
             < EXPORT_END
         ):
 
-            # Spread requested AC export evenly
-            # across the four-hour premium window.
+            # Spread requested AC export evenly across the forecast hours
+            # still available in the premium window.
             hourly_request = (
                 requested_export
-                / (
-                    EXPORT_END
-                    - EXPORT_START
-                )
+                / max(1, export_window_slots.get(day, 0))
             )
 
             # Solar export and forced battery export
