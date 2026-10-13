@@ -105,20 +105,21 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
             CREATE TABLE foxess_live (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL,
                 battery_soc REAL, pv_kw REAL, load_kw REAL,
-                grid_import_kw REAL, grid_export_kw REAL
+                grid_import_kw REAL, grid_export_kw REAL,
+                battery_charge_kw REAL
             )
         """)
         conn.execute(
             "INSERT INTO foxess_live "
-            "(timestamp, battery_soc, pv_kw, load_kw, grid_import_kw, grid_export_kw) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            ("2026-10-05T10:10:00+11:00", 35.0, 4.2, 1.3, 8.4, 0.0),
+            "(timestamp, battery_soc, pv_kw, load_kw, grid_import_kw, "
+            "grid_export_kw, battery_charge_kw) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("2026-10-05T10:10:00+11:00", 35.0, 4.2, 1.3, 8.4, 0.0, 8.4),
         )
         conn.execute(
             "INSERT INTO foxess_live "
-            "(timestamp, battery_soc, pv_kw, load_kw, grid_import_kw, grid_export_kw) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (self.solar_start_timestamp, 35.0, 0.4, 1.2, 0.8, 0.0),
+            "(timestamp, battery_soc, pv_kw, load_kw, grid_import_kw, "
+            "grid_export_kw, battery_charge_kw) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (self.solar_start_timestamp, 35.0, 0.4, 1.2, 0.8, 0.0, 0.0),
         )
         conn.execute("""
             CREATE TABLE weather (
@@ -229,9 +230,12 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn("if(!finalPlan&&!morningPlan)", body)
         self.assertIn("MORNING CONTROL PLAN", body)
         self.assertIn("Today’s actual import and export prediction", body)
-        self.assertIn("Morning plan ${kwh(planned)} · actual import", body)
+        self.assertIn("Morning plan ${kwh(planned)} · ${actualLabel}", body)
         self.assertIn("IMPORT ACTUAL · EXPORT FORECAST", body)
         self.assertIn("charge_window_complete", body)
+        self.assertNotIn("Today’s actual import is loading", body)
+        self.assertNotIn("Import result loading", body)
+        self.assertIn("Latest export forecast unavailable", body)
 
     def test_fixed_60_comparison_uses_same_5pm_battery_and_efficiency(self):
         result = dashboard_app.fixed_60_comparison(42.0, 19.0, 52.4)
@@ -327,6 +331,10 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertTrue(after["control"]["charge_window_complete"])
         self.assertFalse(before["live"]["charge_window_complete"])
         self.assertTrue(after["live"]["charge_window_complete"])
+        self.assertEqual(after["live"]["observed_grid_charge_kwh"], 0.7)
+        self.assertEqual(after["live"]["observed_grid_stored_kwh"], 0.66)
+        self.assertEqual(after["live"]["observed_grid_charge_cost"], 0.08)
+        self.assertEqual(after["live"]["observed_grid_charge_samples"], 1)
 
 
 if __name__ == "__main__":

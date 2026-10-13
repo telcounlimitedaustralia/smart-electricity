@@ -231,6 +231,11 @@ def optimizer_audit():
             (name,),
         ).fetchone())
 
+    def table_columns(name):
+        return {
+            row["name"] for row in conn.execute(f"PRAGMA table_info({name})")
+        }
+
     frozen = None
     if table_exists("economic_plan_actions"):
         latest_created = conn.execute("""
@@ -430,6 +435,44 @@ def optimizer_audit():
             live["charge_window_complete"] = (
                 now.hour * 60 + now.minute >= 14 * 60
             )
+            live["observed_grid_charge_kwh"] = None
+            live["observed_grid_stored_kwh"] = None
+            live["observed_grid_charge_cost"] = None
+            live["observed_grid_charge_samples"] = 0
+            if "battery_charge_kw" in table_columns("foxess_live"):
+                charge_rows = [
+                    dict(item)
+                    for item in conn.execute("""
+                        SELECT timestamp, battery_soc, pv_kw, load_kw,
+                               grid_import_kw, battery_charge_kw
+                        FROM foxess_live
+                        WHERE substr(timestamp, 1, 10) = ?
+                          AND substr(timestamp, 12, 5) >= '10:05'
+                          AND substr(timestamp, 12, 5) <= '13:55'
+                          AND battery_soc IS NOT NULL
+                        ORDER BY timestamp
+                    """, (today,)).fetchall()
+                ]
+                observed_charge = replay_without_grid_charge(charge_rows)
+                if observed_charge["available"]:
+                    grid_charge_kwh = float(
+                        observed_charge["grid_charge_ac"]
+                    )
+                    live["observed_grid_charge_kwh"] = round(
+                        grid_charge_kwh,
+                        2,
+                    )
+                    live["observed_grid_stored_kwh"] = round(
+                        float(observed_charge["grid_stored"]),
+                        2,
+                    )
+                    live["observed_grid_charge_cost"] = round(
+                        grid_charge_kwh * 11.11 / 100.0,
+                        2,
+                    )
+                    live["observed_grid_charge_samples"] = int(
+                        observed_charge["samples"]
+                    )
             milestones = {}
             for label, hour, minute in (
                 ("10:05", 10, 5),
