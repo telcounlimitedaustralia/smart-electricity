@@ -8,8 +8,11 @@ from datetime import datetime, time
 DB = "data/energy.db"
 PREMIUM_START = time(17, 0)
 PREMIUM_END = time(21, 0)
+CHEAP_START = time(10, 5)
+CHEAP_END = time(13, 55)
 PREMIUM_EXPORT_DOLLARS_PER_KWH = 0.28
 MAX_INTERVAL_HOURS = 10 / 60
+CHEAP_WINDOW_REQUIRED_HOURS = 3.45
 
 
 def _float(value):
@@ -18,6 +21,85 @@ def _float(value):
 
 def _round(value, digits=2):
     return None if value is None else round(float(value), digits)
+
+
+def _table_columns(conn, table):
+    return {
+        row[1]
+        for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+
+
+def _morning_charge_forecast(conn, day):
+    """Return the last joint-controller charge plan frozen before 10:05 AM."""
+    required = {"plan_date", "created_at", "charge_kwh"}
+    if not required.issubset(_table_columns(conn, "economic_plan_actions")):
+        return None
+
+    row = conn.execute(
+        """
+        SELECT charge_kwh
+        FROM economic_plan_actions
+        WHERE plan_date = ?
+          AND substr(created_at, 12, 5) < '10:05'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (day,),
+    ).fetchone()
+    return _float(row[0]) if row else None
+
+
+def _cheap_battery_import_actuals(conn, day):
+    """Measure grid energy sent to the battery from 10:05 AM to 1:55 PM."""
+    required = {
+        "timestamp",
+        "pv_kw",
+        "load_kw",
+        "grid_import_kw",
+        "battery_charge_kw",
+    }
+    if not required.issubset(_table_columns(conn, "foxess_history")):
+        return None, 0.0
+
+    rows = conn.execute(
+        """
+        SELECT timestamp, pv_kw, load_kw, grid_import_kw, battery_charge_kw
+        FROM foxess_history
+        WHERE substr(timestamp, 1, 10) = ?
+          AND substr(timestamp, 12, 5) >= '10:05'
+          AND substr(timestamp, 12, 5) <= '13:55'
+        ORDER BY timestamp
+        """,
+        (day,),
+    ).fetchall()
+
+    grid_charge_kwh = 0.0
+    covered_hours = 0.0
+    for first, second in zip(rows, rows[1:]):
+        first_ts = datetime.fromisoformat(first["timestamp"])
+        second_ts = datetime.fromisoformat(second["timestamp"])
+        interval_hours = (second_ts - first_ts).total_seconds() / 3600
+        if not (0 < interval_hours <= MAX_INTERVAL_HOURS):
+            continue
+        if not (CHEAP_START <= first_ts.time() < CHEAP_END):
+            continue
+
+        pv_kw = max(0.0, float(first["pv_kw"] or 0.0))
+        load_kw = max(0.0, float(first["load_kw"] or 0.0))
+        grid_import_kw = max(0.0, float(first["grid_import_kw"] or 0.0))
+        battery_charge_kw = max(0.0, float(first["battery_charge_kw"] or 0.0))
+        household_grid_kw = max(0.0, load_kw - pv_kw)
+        grid_for_battery_kw = min(
+            battery_charge_kw,
+            max(0.0, grid_import_kw - household_grid_kw),
+        )
+        grid_charge_kwh += grid_for_battery_kw * interval_hours
+        covered_hours += interval_hours
+
+    if covered_hours < CHEAP_WINDOW_REQUIRED_HOURS:
+        return None, round(covered_hours, 2)
+    return round(grid_charge_kwh, 2), round(covered_hours, 2)
 
 
 def _premium_actuals(conn, day):
@@ -134,14 +216,16 @@ def calculate(db_path=None):
         premium_export, premium_revenue, premium_coverage = _premium_actuals(
             conn, row["plan_date"]
         )
+        cheap_import_forecast = _morning_charge_forecast(conn, row["plan_date"])
+        cheap_import_actual, cheap_import_coverage = _cheap_battery_import_actuals(
+            conn, row["plan_date"]
+        )
 
         solar_forecast = _float(row["forecast_solar_kwh"])
         solar_actual = _float(row["actual_solar_kwh"])
         load_forecast = _float(row["ml_load_forecast_kwh"])
         load_actual = _float(row["actual_load_kwh"])
         premium_export_forecast = _float(row["recommended_export_kwh"])
-        import_forecast = _float(row["predicted_grid_import_kwh"])
-
         revenue_forecast = _float(row["predicted_export_revenue"])
         if revenue_forecast is None and premium_export_forecast is not None:
             revenue_forecast = (
@@ -175,8 +259,13 @@ def calculate(db_path=None):
                     else premium_export_forecast - premium_export
                 ),
                 "total_export_actual_kwh": _round(row["actual_grid_export_kwh"]),
-                "grid_import_forecast_kwh": _round(import_forecast),
-                "grid_import_actual_kwh": _round(row["actual_grid_import_kwh"]),
+                "cheap_import_forecast_kwh": _round(cheap_import_forecast),
+                "cheap_import_actual_kwh": _round(cheap_import_actual),
+                # Retain old field names for API clients while correcting their
+                # meaning to the same cheap battery-import window.
+                "grid_import_forecast_kwh": _round(cheap_import_forecast),
+                "grid_import_actual_kwh": _round(cheap_import_actual),
+                "total_grid_import_actual_kwh": _round(row["actual_grid_import_kwh"]),
                 "export_revenue_forecast": _round(revenue_forecast),
                 "premium_revenue_actual": _round(premium_revenue),
                 "total_export_revenue_actual": _round(row["actual_export_revenue"]),
@@ -185,6 +274,7 @@ def calculate(db_path=None):
                 "net_value_forecast": _round(row["predicted_net_value"]),
                 "net_value_actual": _round(row["actual_net_value"]),
                 "premium_window_coverage_hours": premium_coverage,
+                "cheap_import_window_coverage_hours": cheap_import_coverage,
             }
         )
 
@@ -209,9 +299,9 @@ def calculate(db_path=None):
             ],
             "kWh",
         ),
-        "grid_import": _metric(
+        "cheap_import": _metric(
             [
-                (row["grid_import_forecast_kwh"], row["grid_import_actual_kwh"])
+                (row["cheap_import_forecast_kwh"], row["cheap_import_actual_kwh"])
                 for row in daily
             ],
             "kWh",
@@ -232,6 +322,8 @@ def calculate(db_path=None):
             "$",
         ),
     }
+    # Backward-compatible metric key for older read-only clients.
+    metrics["grid_import"] = metrics["cheap_import"]
 
     # Retain the original load-monitor fields for existing API consumers.
     ml_metric = metrics["home_use"]
@@ -305,16 +397,19 @@ def calculate(db_path=None):
         },
         "comparison_definition": (
             "Forecast error is forecast minus actual. Premium export and revenue "
-            "compare only the same 5 PM-9 PM window; all-day actual totals are "
-            "shown separately. Missing forecasts remain unavailable, never zero."
+            "compare only the same 5 PM-9 PM window. Cheap battery import compares "
+            "the last joint-controller plan frozen before 10:05 AM with measured "
+            "grid-to-battery energy from 10:05 AM-1:55 PM. All-day grid import is "
+            "kept separate. Missing forecasts remain unavailable, never zero."
         ),
         "data_quality": {
             "validated_days": len(daily),
             "minimum_days_for_trend": 7,
             "premium_window_required_hours": 3.6,
+            "cheap_import_window_required_hours": CHEAP_WINDOW_REQUIRED_HOURS,
             "import_forecast_note": (
-                "Historic import forecasts were not stored. Coverage will build "
-                "from new daily snapshots."
+                "Cheap battery-import forecasts use the last joint-controller "
+                "snapshot frozen before the 10:05 AM control window."
             ),
         },
         "baseline_mae_kwh": baseline_metric["mae"],
