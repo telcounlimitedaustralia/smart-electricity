@@ -228,6 +228,10 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn("Saved morning control plan", body)
         self.assertIn("if(!finalPlan&&!morningPlan)", body)
         self.assertIn("MORNING CONTROL PLAN", body)
+        self.assertIn("Today’s actual import and export prediction", body)
+        self.assertIn("Morning plan ${kwh(planned)} · actual import", body)
+        self.assertIn("IMPORT ACTUAL · EXPORT FORECAST", body)
+        self.assertIn("charge_window_complete", body)
 
     def test_fixed_60_comparison_uses_same_5pm_battery_and_efficiency(self):
         result = dashboard_app.fixed_60_comparison(42.0, 19.0, 52.4)
@@ -306,6 +310,23 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertAlmostEqual(data["live"]["solar_start_kwh"], 14.7)
         self.assertEqual(data["events"][0]["status"], "verified")
         self.assertEqual(data["control"]["schedule"]["import_window"], "10:05-13:55")
+
+    def test_audit_switches_from_morning_plan_to_actual_at_2pm(self):
+        timezone = ZoneInfo("Australia/Sydney")
+        with patch.object(dashboard_app, "DB", self.db_path), patch.object(
+            dashboard_app, "get_switches", return_value=dict(SWITCHES)
+        ), patch.object(dashboard_app, "datetime", wraps=datetime) as clock:
+            clock.now.return_value = datetime(2026, 10, 5, 13, 59, tzinfo=timezone)
+            before = self.client.get("/api/optimizer-audit").get_json()
+            clock.now.return_value = datetime(2026, 10, 5, 14, 0, tzinfo=timezone)
+            after = self.client.get("/api/optimizer-audit").get_json()
+
+        self.assertEqual(before["morning_plan"]["charge_kwh"], 14.0)
+        self.assertEqual(before["morning_plan"]["charge_target_soc"], 62.7)
+        self.assertFalse(before["control"]["charge_window_complete"])
+        self.assertTrue(after["control"]["charge_window_complete"])
+        self.assertFalse(before["live"]["charge_window_complete"])
+        self.assertTrue(after["live"]["charge_window_complete"])
 
 
 if __name__ == "__main__":

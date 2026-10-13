@@ -380,6 +380,18 @@ def optimizer_audit():
                 "days": frozen_days,
             }
 
+    morning_plan = None
+    if table_exists("economic_plan_actions"):
+        row = conn.execute("""
+            SELECT created_at, charge_kwh, charge_target_soc
+            FROM economic_plan_actions
+            WHERE plan_date = ?
+              AND substr(created_at, 12, 5) >= '09:45'
+              AND substr(created_at, 12, 5) < '14:00'
+            ORDER BY created_at DESC LIMIT 1
+        """, (today,)).fetchone()
+        morning_plan = dict(row) if row else None
+
     events = []
     if table_exists("automation_events"):
         events = [dict(row) for row in conn.execute("""
@@ -415,6 +427,9 @@ def optimizer_audit():
                 * ECONOMIC_BATTERY_KWH
             )
         if live is not None:
+            live["charge_window_complete"] = (
+                now.hour * 60 + now.minute >= 14 * 60
+            )
             milestones = {}
             for label, hour, minute in (
                 ("10:05", 10, 5),
@@ -492,12 +507,16 @@ def optimizer_audit():
         "generated_at": now.isoformat(timespec="seconds"),
         "today": today,
         "frozen": frozen,
+        "morning_plan": morning_plan,
         "live": live,
         "weather": weather,
         "weather_summary": weather_summary,
         "control": {
             "mode": control_mode,
             "switches": switches,
+            "charge_window_complete": (
+                now.hour * 60 + now.minute >= 14 * 60
+            ),
             "latest_by_phase": latest_by_phase,
             "schedule": {
                 "plan_import": "09:45",
@@ -1185,6 +1204,14 @@ def economic_optimizer():
                 ORDER BY timestamp
             """, (today_string,)).fetchall()
         ]
+        today_charge_rows = [
+            row
+            for row in today_shoulder_rows
+            if "10:05" <= str(row["timestamp"])[11:16] <= "13:55"
+        ]
+        today_charge_actual = replay_without_grid_charge(
+            today_charge_rows
+        )
         today_no_grid = replay_without_grid_charge(
             today_shoulder_rows
         )
@@ -1209,10 +1236,10 @@ def economic_optimizer():
         # but rebuild the no-charge baseline from measured PV and load so the
         # manually imported energy is never mislabelled as solar.
         observed_grid_charge_ac = float(
-            today_no_grid.get("grid_charge_ac", 0.0)
+            today_charge_actual.get("grid_charge_ac", 0.0)
         )
         observed_grid_stored = float(
-            today_no_grid.get("grid_stored", 0.0)
+            today_charge_actual.get("grid_stored", 0.0)
         )
         observed_grid_cost = observed_grid_charge_ac * 11.11 / 100.0
         counterfactual_start_energy = today_no_grid.get("energy")
