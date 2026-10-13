@@ -136,7 +136,13 @@ class JointOptimisationTests(unittest.TestCase):
         expected_import = (optimiser.BATTERY_KWH * 0.30) / optimiser.CHARGE_EFF
         self.assertAlmostEqual(day["solar_only_5pm_soc"], 70.0, places=3)
         self.assertAlmostEqual(day["grid_charge"], expected_import, places=3)
+        self.assertAlmostEqual(
+            day["post_shoulder_energy"],
+            optimiser.BATTERY_KWH * 0.60,
+            places=3,
+        )
         self.assertAlmostEqual(day["pre_export_energy"], optimiser.BATTERY_KWH)
+        self.assertAlmostEqual(day["natural_export"], 0.0, places=3)
 
     def test_partial_live_shoulder_window_delivers_requested_charge(self):
         start = datetime(2026, 10, 13)

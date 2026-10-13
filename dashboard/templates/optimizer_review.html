@@ -144,11 +144,11 @@
 
     <section class="dashboard-section" id="comparisonDetails">
       <details class="comparison-disclosure">
-        <summary><span class="comparison-summary"><b>Forecast versus actual details</b><small>Solar, home use, premium export and revenue</small></span></summary>
+        <summary><span class="comparison-summary"><b>Forecast versus actual details</b><small>Solar, home use, grid import, premium export and revenue</small></span></summary>
         <div class="section-content">
           <div class="table-panel"><div class="table-wrap"><table class="compact-compare" aria-label="Forecast versus actual key results">
-            <thead><tr><th>Day</th><th><span class="metric-heading"><span aria-hidden="true">☀</span><span>Solar produced</span></span></th><th><span class="metric-heading"><span aria-hidden="true">⌂</span><span>Home use</span></span></th><th><span class="metric-heading"><span aria-hidden="true">↗</span><span>Premium export</span></span></th><th><span class="metric-heading"><span aria-hidden="true">$</span><span>Export revenue</span></span></th></tr></thead>
-            <tbody id="comparisonBody"><tr><td colspan="5" class="empty">Loading completed forecast comparisons…</td></tr></tbody>
+            <thead><tr><th>Day</th><th><span class="metric-heading"><span aria-hidden="true">☀</span><span>Solar produced</span></span></th><th><span class="metric-heading"><span aria-hidden="true">⌂</span><span>Home use</span></span></th><th><span class="metric-heading"><span aria-hidden="true">⚡</span><span>Grid import</span></span></th><th><span class="metric-heading"><span aria-hidden="true">↗</span><span>Premium export</span></span></th><th><span class="metric-heading"><span aria-hidden="true">$</span><span>Export revenue</span></span></th></tr></thead>
+            <tbody id="comparisonBody"><tr><td colspan="6" class="empty">Loading completed forecast comparisons…</td></tr></tbody>
           </table></div></div>
           <p class="table-note" id="comparisonNote">Blue is forecast; green is actual. Energy percentages compare kWh with the 42 kWh battery capacity.</p>
         </div>
@@ -204,6 +204,7 @@
     const esc=value=>String(value??"—").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
     const num=(value,digits=1)=>value==null||Number.isNaN(Number(value))?"—":Number(value).toFixed(digits);
     const kwh=value=>value==null?"—":`${num(value)} kWh`;
+    const wholeKwh=value=>value==null?"—":`${Math.round(Number(value))} kWh`;
     const pct=value=>value==null?"—":`${num(value)}%`;
     const energyPct=value=>value==null?"—":`${num(Number(value)/BATTERY_KWH*100)}%`;
     const batteryPair=(kwhValue,socValue)=>{const energy=kwhValue==null&&socValue!=null?Number(socValue)/100*BATTERY_KWH:kwhValue;const level=socValue==null&&energy!=null?Number(energy)/BATTERY_KWH*100:socValue;return energy==null&&level==null?"—":`${kwh(energy)} · ${pct(level)}`;};
@@ -268,7 +269,7 @@
       return parts.join(" ");
     }
 
-    function answerText(day,{actualCharge=false}={}){const charge=chargeOf(day),sale=exportOf(day),observed=day?.observed_grid_charge_kwh==null?null:Number(day.observed_grid_charge_kwh);if(actualCharge){if(observed==null)return sale>=.05?`The cheap-period battery import reading is unavailable. Current plan: sell <strong>${kwh(sale)}</strong> at the premium rate.`:`The cheap-period battery import reading is unavailable. Keep the battery in normal Self-use mode.`;if(observed>=.05&&sale>=.05)return`Imported <strong>${kwh(observed)}</strong> during the cheap period. Current plan: sell <strong>${kwh(sale)}</strong> at the premium rate.`;if(observed>=.05)return`Imported <strong>${kwh(observed)}</strong> during the cheap period and keep the energy for the home.`;if(sale>=.05)return`No battery charging was measured during the cheap period. Current plan: sell <strong>${kwh(sale)}</strong> at the premium rate.`;return`No battery charging was measured during the cheap period. Keep the battery in normal Self-use mode.`;}if(charge>=.05&&sale>=.05)return`Buy <strong>${kwh(charge)}</strong> when electricity is cheap, then sell <strong>${kwh(sale)}</strong> at the premium rate.`;if(charge>=.05)return`Buy <strong>${kwh(charge)}</strong> when electricity is cheap and keep the energy for the home.`;if(sale>=.05)return`Buy no grid energy. Sell <strong>${kwh(sale)}</strong> of safe surplus at the premium rate.`;return`No forced buying or selling today. Keep the battery in normal Self-use mode.`;}
+    function answerText(day,{actualCharge=false}={}){const charge=chargeOf(day),sale=exportOf(day),observed=day?.observed_grid_charge_kwh==null?null:Number(day.observed_grid_charge_kwh);if(actualCharge){if(observed==null)return sale>=.05?`The cheap-period battery import reading is unavailable. Current plan: sell <strong>${wholeKwh(sale)}</strong> at the premium rate.`:`The cheap-period battery import reading is unavailable. Keep the battery in normal Self-use mode.`;if(observed>=.05&&sale>=.05)return`Imported <strong>${wholeKwh(observed)}</strong> during the cheap period. Current plan: sell <strong>${wholeKwh(sale)}</strong> at the premium rate.`;if(observed>=.05)return`Imported <strong>${wholeKwh(observed)}</strong> during the cheap period and keep the energy for the home.`;if(sale>=.05)return`No battery charging was measured during the cheap period. Current plan: sell <strong>${wholeKwh(sale)}</strong> at the premium rate.`;return`No battery charging was measured during the cheap period. Keep the battery in normal Self-use mode.`;}if(charge>=.05&&sale>=.05)return`Buy <strong>${wholeKwh(charge)}</strong> when electricity is cheap, then sell <strong>${wholeKwh(sale)}</strong> at the premium rate.`;if(charge>=.05)return`Buy <strong>${wholeKwh(charge)}</strong> when electricity is cheap and keep the energy for the home.`;if(sale>=.05)return`Buy no grid energy. Sell <strong>${wholeKwh(sale)}</strong> of safe surplus at the premium rate.`;return`No forced buying or selling today. Keep the battery in normal Self-use mode.`;}
 
     function renderDayTimeline(day,telemetry={},events=[]){
       const batteryState=value=>value==null?"Battery —":`Battery ${Math.round(Number(value))}% · ${Math.round(Number(value)/100*BATTERY_KWH)} kWh`;
@@ -278,7 +279,7 @@
       const moments=[
         ["dawn","🌅",solarTime,"Solar starts",batteryState(solarSoc),telemetry?.solar_start_soc!=null?"Actual":"Forecast",""],
         ["import","⚡","10:05 AM",chargeComplete?(charge==null?"Import unavailable":charge>.05?"Grid imported":"No battery import"):charge>.05?"Cheap import":"No grid import",batteryState(start),chargeComplete?(charge==null?"Unavailable":"Actual"):milestones["10:05"]?"Actual":"Forecast",chargeComplete?(charge==null?"":charge>.05?`Imported ${wholeEnergy(charge)}`:""):charge>.05?`Plan ${wholeEnergy(charge)}`:""],
-        ["solar","☀","1:55 PM","Solar + charge",batteryState(afterCharge),milestones["13:55"]?"Actual":"Forecast",""],
+        ["solar","☀","1:55 PM","Cheap period ends",batteryState(afterCharge),milestones["13:55"]?"Actual":"Forecast",""],
         ["export","↗","5:05 PM",sale>.05?"Premium export":"Keep energy",batteryState(atFive),milestones["17:05"]?"Actual":"Forecast",sale>.05?`Sell ${wholeEnergy(sale)}`:""],
         ["sunset","🌇","8:55 PM","Self-use resumes",batteryState(afterExport),milestones["20:55"]?"Actual":"Forecast",""],
         ["night","☾","Midnight","Overnight reserve",batteryState(end),"Forecast",""],
@@ -363,11 +364,12 @@
 
     function renderComparison(rows){
       const target=$("comparisonBody"),usable=(rows||[]).slice(-7).reverse();
-      if(!usable.length){target.innerHTML='<tr><td colspan="5" class="empty">No completed forecast-versus-actual days are available yet.</td></tr>';return;}
+      if(!usable.length){target.innerHTML='<tr><td colspan="6" class="empty">No completed forecast-versus-actual days are available yet.</td></tr>';return;}
       target.innerHTML=usable.map(row=>`<tr>
         <td><span class="cell-main">${esc(shortDate(row.date))}</span><span class="future-tag">COMPLETED DAY</span></td>
         <td>${comparisonEnergyCell(row.solar_forecast_kwh,row.solar_actual_kwh)}</td>
         <td>${comparisonEnergyCell(row.load_forecast_kwh,row.load_actual_kwh)}</td>
+        <td>${comparisonEnergyCell(row.grid_import_forecast_kwh,row.grid_import_actual_kwh)}</td>
         <td>${comparisonEnergyCell(row.premium_export_forecast_kwh,row.premium_export_actual_kwh)}</td>
         <td>${comparisonMoneyCell(row.export_revenue_forecast,row.premium_revenue_actual)}</td>
       </tr>`).join("");

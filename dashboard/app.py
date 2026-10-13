@@ -1458,6 +1458,7 @@ def economic_optimizer():
                     "no safe charge/export pair improves whole-horizon value."
                 )
 
+            post_shoulder = d.get("post_shoulder_energy")
             pre_export = d.get(
                 "pre_export_energy"
             )
@@ -1645,6 +1646,23 @@ def economic_optimizer():
 
                 "actual_simulated_charge_kwh":
                     round(grid_charge_actual, 2),
+
+                "charge_target_soc": (
+                    None
+                    if post_shoulder is None
+                    else round(
+                        float(post_shoulder)
+                        / ECONOMIC_BATTERY_KWH
+                        * 100.0,
+                        1,
+                    )
+                ),
+
+                "battery_after_charge_kwh": (
+                    None
+                    if post_shoulder is None
+                    else round(float(post_shoulder), 2)
+                ),
 
                 "stored_from_grid_kwh": round(grid_stored, 2),
 
