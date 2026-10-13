@@ -210,10 +210,10 @@
     const bridgeValue=(kwhValue,socValue)=>{const energy=kwhValue==null&&socValue!=null?Number(socValue)/100*BATTERY_KWH:kwhValue;const level=socValue==null&&energy!=null?Number(energy)/BATTERY_KWH*100:socValue;const wholePct=level==null?"—":`${Math.round(Number(level))}%`,wholeKwh=energy==null?"—":`${Math.round(Number(energy))} kWh`;return `<span class="bridge-pct">${wholePct}</span><small class="bridge-kwh">${wholeKwh}</small>`;};
     const bridgeDelta=value=>value==null?"—":`${Number(value)>=0?"+":"−"}${Math.round(Math.abs(Number(value)))}%`;
     const energyPair=value=>value==null?"—":`${kwh(value)} · ${energyPct(value)}`;
-    const planEnergy=value=>value==null?'<span class="waiting">Unavailable</span>':`<span class="plan-value"><b class="plan-pct">${Math.round(Number(value)/BATTERY_KWH*100)}%</b><small class="plan-kwh">${num(value)} kWh</small></span>`;
-    const planBattery=(kwhValue,socValue)=>{const energy=kwhValue==null&&socValue!=null?Number(socValue)/100*BATTERY_KWH:kwhValue;const level=socValue==null&&energy!=null?Number(energy)/BATTERY_KWH*100:socValue;return energy==null&&level==null?'<span class="waiting">Unavailable</span>':`<span class="plan-value"><b class="plan-pct">${Math.round(Number(level))}%</b><small class="plan-kwh">${num(energy)} kWh</small></span>`;};
+    const planEnergy=value=>value==null?'<span class="waiting">Unavailable</span>':`<span class="plan-value"><b class="plan-pct">${Math.round(Number(value)/BATTERY_KWH*100)}%</b><small class="plan-kwh">${Math.round(Number(value))} kWh</small></span>`;
+    const planBattery=(kwhValue,socValue)=>{const energy=kwhValue==null&&socValue!=null?Number(socValue)/100*BATTERY_KWH:kwhValue;const level=socValue==null&&energy!=null?Number(energy)/BATTERY_KWH*100:socValue;return energy==null&&level==null?'<span class="waiting">Unavailable</span>':`<span class="plan-value"><b class="plan-pct">${Math.round(Number(level))}%</b><small class="plan-kwh">${Math.round(Number(energy))} kWh</small></span>`;};
     const wholePct=value=>value==null?"—":`${Math.round(Number(value))}%`;
-    const oneKwh=value=>value==null?"—":`${num(value)} kWh`;
+    const oneKwh=value=>value==null?"—":`${Math.round(Number(value))} kWh`;
     const money=value=>value==null?"—":`${Number(value)<0?"−":""}$${Math.abs(Number(value)).toFixed(2)}`;
     const localTime=value=>value?new Date(value).toLocaleString("en-AU",{weekday:"short",hour:"numeric",minute:"2-digit"}):"—";
     const clockTime=value=>value?new Date(value).toLocaleTimeString("en-AU",{hour:"numeric",minute:"2-digit"}):"—";

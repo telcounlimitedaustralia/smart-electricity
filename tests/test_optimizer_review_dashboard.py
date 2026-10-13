@@ -181,6 +181,8 @@ class OptimizerReviewDashboardTests(unittest.TestCase):
         self.assertIn("Keep for home", body)
         self.assertIn('class="plan-pct"', body)
         self.assertIn('class="plan-kwh"', body)
+        self.assertIn('${Math.round(Number(value))} kWh', body)
+        self.assertIn('${Math.round(Number(energy))} kWh', body)
         self.assertIn('class="dashboard-section"', body)
         self.assertIn('<details class="comparison-disclosure" id="weekPlanDisclosure">', body)
         self.assertNotIn('<details class="comparison-disclosure" id="weekPlanDisclosure" open>', body)
